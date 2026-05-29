@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block title %}首页 - 微信自动回复{% endblock %}
+
+{% block content %}
+{% if not status.connected %}
+<div class="pixel-alert pixel-alert-warning">
+    <div class="d-flex align-center gap-2 mb-2">
+        <i class="bi bi-exclamation-triangle"></i>
+        <strong>微信未连接</strong>
+    </div>
+    <p class="mb-2" style="white-space: pre-line;">{{ status.last_error or '未知错误' }}</p>
+    {% if '主窗口' in (status.last_error or '') or '登录' in (status.last_error or '') %}
+    <div class="mt-2" style="font-size: 16px;">
+        <strong>可能原因：微信版本过高</strong><br>
+        wxauto4 免费版仅支持到 4.1.8.107<br><br>
+        <strong>解决方法：</strong><br>
+        1. 关闭微信<br>
+        2. 运行 <code>download_wechat.bat</code> 下载兼容版本<br>
+        3. 覆盖安装（不会丢失聊天记录）<br>
+        4. 重新登录微信后刷新此页面
+    </div>
+    {% elif '权限' in (status.last_error or '') %}
+    <div class="mt-2" style="font-size: 16px;">
+        <strong>解决方法：</strong><br>
+        1. 右键点击 <code>run_as_admin.bat</code> → 以管理员身份运行<br>
+        2. 或者运行 <code>fix_permissions.bat</code> 修复权限后重新启动
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+<div class="pixel-grid pixel-grid-4 mb-4">
+    <div class="pixel-stat">
+        <div class="stat-icon">{% if status.running %}<i class="bi bi-play-circle text-green"></i>{% else %}<i class="bi bi-stop-circle text-gray"></i>{% endif %}</div>
+        <div class="stat-value {% if status.running %}text-green{% else %}text-gray{% endif %}">{% if status.running %}ON{% else %}OFF{% endif %}</div>
+        <div class="stat-label">运行状态</div>
+    </div>
+    <div class="pixel-stat">
+        <div class="stat-icon">{% if status.connected %}<i class="bi bi-link-45deg text-green"></i>{% else %}<i class="bi bi-unlink text-red"></i>{% endif %}</div>
+        <div class="stat-value {% if status.connected %}text-green{% else %}text-red{% endif %}">{% if status.connected %}OK{% else %}NO{% endif %}</div>
+        <div class="stat-label">微信连接</div>
+    </div>
+    <div class="pixel-stat">
+        <div class="stat-icon"><i class="bi bi-people text-blue"></i></div>
+        <div class="stat-value text-blue">{{ status.contacts|length }}</div>
+        <div class="stat-label">监控联系人</div>
+    </div>
+    <div class="pixel-stat">
+        <div class="stat-icon"><i class="bi bi-cpu text-yellow"></i></div>
+        <div class="stat-value text-yellow font-ui" style="font-size: 16px;">{{ status.ai_model }}</div>
+        <div class="stat-label">{{ status.available_models|length }} 个可用</div>
+    </div>
+</div>
+
+<div class="pixel-card mb-4">
+    <div class="pixel-card-header">
+        <span><i class="bi bi-controller"></i> 系统控制</span>
+    </div>
+    <div class="pixel-card-body d-flex gap-4">
+        <button class="pixel-btn pixel-btn-green" onclick="startSystem()">
+            <i class="bi bi-play"></i> 启动
+        </button>
+        <button class="pixel-btn pixel-btn-red" onclick="stopSystem()">
+            <i class="bi bi-stop"></i> 停止
+        </button>
+        <button class="pixel-btn pixel-btn-blue" onclick="location.reload()">
+            <i class="bi bi-arrow-clockwise"></i> 刷新
+        </button>
+    </div>
+</div>
+
+<div class="pixel-card mb-4">
+    <div class="pixel-card-header">
+        <span><i class="bi bi-info-circle"></i> 版本兼容性</span>
+    </div>
+    <div class="pixel-card-body">
+        <div class="pixel-grid pixel-grid-2 mb-4">
+            <div class="info-box" style="border-color: var(--accent-green);">
+                <div class="info-title text-green">wxauto4 免费版</div>
+                支持微信：最高 4.1.8.107<br>
+                Python：3.9-3.12<br>
+                安装：pip install wxauto4
+                <div class="mt-2">
+                    <a href="https://github.com/SiverKing/wechat4.0-windows-versions/releases/tag/v4.1.8.107" target="_blank" class="pixel-btn pixel-btn-green pixel-btn-sm">
+                        <i class="bi bi-download"></i> 下载微信
+                    </a>
+                </div>
+            </div>
+            <div class="info-box" style="border-color: var(--accent-yellow);">
+                <div class="info-title text-yellow">wxautox4 Plus版</div>
+                支持微信：最高 4.1.9.35<br>
+                Python：3.9-3.13<br>
+                安装：pip install wxautox4
+                <div class="mt-2">
+                    <a href="https://github.com/SiverKing/wechat4.0-windows-versions/releases/tag/v4.1.9.35" target="_blank" class="pixel-btn pixel-btn-yellow pixel-btn-sm">
+                        <i class="bi bi-download"></i> 下载微信
+                    </a>
+                </div>
+            </div>
+        </div>
+        <hr class="pixel-divider">
+        <div class="info-box">
+            <div class="info-title text-blue"><i class="bi bi-lightning"></i> 快速解决步骤</div>
+            <ol>
+                <li>检查微信版本（设置 → 关于微信）</li>
+                <li>如果版本过高，下载上面的兼容版本</li>
+                <li>打开微信客户端并登录</li>
+                <li>确保微信窗口显示在桌面上</li>
+                <li>点击"刷新"按钮</li>
+            </ol>
+        </div>
+    </div>
+</div>
+
+<div class="pixel-card">
+    <div class="pixel-card-header">
+        <span><i class="bi bi-book"></i> 使用说明</span>
+    </div>
+    <div class="pixel-card-body">
+        <div class="pixel-grid pixel-grid-3">
+            <div class="info-box" style="border-color: var(--accent-green);">
+                <div class="info-title text-green">1. 配置AI</div>
+                前往"AI配置"页面<br>
+                设置API Key<br>
+                测试连接
+            </div>
+            <div class="info-box" style="border-color: var(--accent-yellow);">
+                <div class="info-title text-yellow">2. 添加联系人</div>
+                前往"联系人"页面<br>
+                添加监控对象<br>
+                名称需一致
+            </div>
+            <div class="info-box" style="border-color: var(--accent-blue);">
+                <div class="info-title text-blue">3. 启动系统</div>
+                点击"启动"按钮<br>
+                开始监控消息<br>
+                自动回复
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function startSystem() {
+    try {
+        const d = await api('/api/system/start', {method:'POST'});
+        if (d._ok) {
+            showAlert(d.msg || '启动成功', 'success');
+            setTimeout(() => location.reload(), 2000);
+        } else {
+            showAlert(d.error || '启动失败', 'error');
+        }
+    } catch (e) {
+        showAlert('启动失败: ' + e.message, 'error');
+    }
+}
+
+async function stopSystem() {
+    try {
+        const d = await api('/api/system/stop', {method:'POST'});
+        if (d._ok) {
+            showAlert(d.msg || '已停止', 'warning');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showAlert(d.error || '停止失败', 'error');
+        }
+    } catch (e) {
+        showAlert('停止失败: ' + e.message, 'error');
+    }
+}
+</script>
+{% endblock %}

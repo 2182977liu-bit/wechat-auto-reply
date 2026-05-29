@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}微信自动回复{% endblock %}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        :root {
+            --font-display: 'Press Start 2P', monospace;
+            --font-body: 'VT323', monospace;
+            --font-ui: 'Silkscreen', monospace;
+            --px: 4px;
+            --transition: 0.3s;
+            --border-w: 3px;
+            --shadow-offset: 3px;
+        }
+
+        [data-theme="dark"] {
+            --bg-primary: #0a0a1a;
+            --bg-secondary: #12122a;
+            --bg-card: #1a1a3e;
+            --bg-card-header: #1e2a5a;
+            --bg-input: #151530;
+            --bg-hover: #252560;
+            --bg-nav: #0d0d22;
+            --text-primary: #e8e8f0;
+            --text-secondary: #a0a0c0;
+            --text-muted: #606080;
+            --accent-green: #00e6a0;
+            --accent-blue: #4a9eff;
+            --accent-yellow: #ffd93d;
+            --accent-red: #ff6b6b;
+            --accent-purple: #a855f7;
+            --border-color: #2a2a5a;
+            --border-accent: #3a3a7a;
+            --shadow-color: rgba(0, 0, 0, 0.6);
+            --glow-green: 0 0 8px rgba(0, 230, 160, 0.3);
+            --glow-blue: 0 0 8px rgba(74, 158, 255, 0.3);
+            --scrollbar-track: #0a0a1a;
+            --scrollbar-thumb: #2a2a5a;
+            --pixel-shadow: var(--shadow-offset) var(--shadow-offset) 0px #000;
+            --pixel-border: var(--border-w) solid #2a2a5a;
+            --scanline-opacity: 0.03;
+        }
+
+        [data-theme="light"] {
+            --bg-primary: #f0e6d2;
+            --bg-secondary: #e8dcc8;
+            --bg-card: #fff8ee;
+            --bg-card-header: #d4c4a8;
+            --bg-input: #f5edd8;
+            --bg-hover: #e8dcc8;
+            --bg-nav: #d4c4a8;
+            --text-primary: #2a1f14;
+            --text-secondary: #5a4a38;
+            --text-muted: #8a7a68;
+            --accent-green: #2d8a5e;
+            --accent-blue: #2a6496;
+            --accent-yellow: #b8860b;
+            --accent-red: #c0392b;
+            --accent-purple: #7d3c98;
+            --border-color: #c4b498;
+            --border-accent: #a89878;
+            --shadow-color: rgba(42, 31, 20, 0.3);
+            --glow-green: none;
+            --glow-blue: none;
+            --scrollbar-track: #e8dcc8;
+            --scrollbar-thumb: #c4b498;
+            --pixel-shadow: var(--shadow-offset) var(--shadow-offset) 0px #8a7a68;
+            --pixel-border: var(--border-w) solid #c4b498;
+            --scanline-opacity: 0;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: var(--font-body);
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            margin: 0;
+            padding: 0;
+            font-size: 20px;
+            line-height: 1.5;
+            transition: background-color var(--transition), color var(--transition);
+            position: relative;
+        }
+
+        body::after {
+            content: '';
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 0;
+            background: repeating-linear-gradient(
+                0deg,
+                transparent, transparent 2px,
+                rgba(0, 0, 0, var(--scanline-opacity)) 2px,
+                rgba(0, 0, 0, var(--scanline-opacity)) 4px
+            );
+        }
+
+        h1, h2, h3, h4 {
+            font-family: var(--font-display);
+            line-height: 1.6;
+            margin: 0;
+        }
+
+        .font-display { font-family: var(--font-display); }
+        .font-body { font-family: var(--font-body); }
+        .font-ui { font-family: var(--font-ui); }
+
+        .pixel-navbar {
+            background: var(--bg-nav);
+            border-bottom: var(--pixel-border);
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            transition: background var(--transition);
+        }
+
+        .pixel-navbar .nav-left {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .pixel-navbar .brand {
+            font-family: var(--font-display);
+            color: var(--accent-green);
+            font-size: 16px;
+            text-shadow: 2px 2px 0px var(--accent-purple);
+            text-decoration: none;
+            white-space: nowrap;
+            transition: color var(--transition);
+            letter-spacing: 1px;
+        }
+
+        .pixel-navbar .brand:hover { color: var(--accent-yellow); }
+
+        .pixel-navbar .nav-links {
+            display: flex;
+            gap: 2px;
+        }
+
+        .pixel-navbar .nav-links a {
+            font-family: var(--font-ui);
+            color: var(--text-secondary);
+            text-decoration: none;
+            padding: 8px 12px;
+            border: 2px solid transparent;
+            transition: all 0.15s;
+            font-size: 14px;
+            white-space: nowrap;
+        }
+
+        .pixel-navbar .nav-links a:hover {
+            color: var(--accent-green);
+            border-color: var(--border-accent);
+            background: var(--bg-hover);
+        }
+
+        .pixel-navbar .nav-links a.active {
+            border-color: var(--accent-green);
+            background: var(--bg-hover);
+            color: var(--accent-green);
+            box-shadow: var(--glow-green);
+        }
+
+        .pixel-navbar .nav-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .theme-toggle {
+            background: var(--bg-card);
+            border: 2px solid var(--border-color);
+            color: var(--accent-yellow);
+            cursor: pointer;
+            font-size: 18px;
+            padding: 6px 10px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-family: var(--font-ui);
+        }
+
+        .theme-toggle:hover {
+            border-color: var(--accent-yellow);
+            box-shadow: 0 0 8px rgba(255, 217, 61, 0.4);
+            transform: scale(1.05);
+        }
+
+        .theme-toggle .label {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .pixel-container {
+            max-width: 1100px;
+            margin: 20px auto;
+            padding: 0 20px;
+        }
+
+        .pixel-card {
+            background: var(--bg-card);
+            border: var(--pixel-border);
+            box-shadow: var(--pixel-shadow);
+            margin-bottom: 20px;
+            overflow: hidden;
+            transition: background var(--transition), border-color var(--transition);
+        }
+
+        .pixel-card:hover { border-color: var(--accent-green); }
+
+        .pixel-card-header {
+            font-family: var(--font-ui);
+            background: var(--bg-card-header);
+            padding: 12px 16px;
+            border-bottom: var(--pixel-border);
+            font-size: 16px;
+            color: var(--accent-green);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background var(--transition);
+        }
+
+        .pixel-card-body { padding: 16px; }
+
+        .pixel-btn {
+            font-family: var(--font-ui);
+            font-size: 14px;
+            padding: 10px 16px;
+            border: var(--pixel-border);
+            cursor: pointer;
+            transition: all 0.1s;
+            text-transform: uppercase;
+            box-shadow: var(--pixel-shadow);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            letter-spacing: 0.5px;
+        }
+
+        .pixel-btn:hover {
+            transform: translate(2px, 2px);
+            box-shadow: 1px 1px 0px var(--shadow-color);
+        }
+
+        .pixel-btn:active {
+            transform: translate(var(--shadow-offset), var(--shadow-offset));
+            box-shadow: none;
+        }
+
+        .pixel-btn-green { background: var(--accent-green); color: var(--bg-primary); }
+        .pixel-btn-red { background: var(--accent-red); color: #fff; }
+        .pixel-btn-yellow { background: var(--accent-yellow); color: var(--bg-primary); }
+        .pixel-btn-blue { background: var(--accent-blue); color: #fff; }
+        .pixel-btn-purple { background: var(--accent-purple); color: #fff; }
+        .pixel-btn-sm { font-size: 12px; padding: 6px 10px; }
+
+        .pixel-input, .pixel-select {
+            font-family: var(--font-body);
+            font-size: 20px;
+            padding: 10px 14px;
+            border: var(--pixel-border);
+            background: var(--bg-input);
+            color: var(--text-primary);
+            width: 100%;
+            outline: none;
+            transition: all 0.2s;
+            letter-spacing: 0.5px;
+        }
+
+        .pixel-input:focus, .pixel-select:focus {
+            border-color: var(--accent-green);
+            box-shadow: var(--glow-green);
+        }
+
+        .pixel-input::placeholder { color: var(--text-muted); }
+        .pixel-select { cursor: pointer; }
+
+        .pixel-stat {
+            text-align: center;
+            padding: 16px;
+            border: 2px solid var(--border-color);
+            background: var(--bg-card);
+            transition: all 0.2s;
+        }
+
+        .pixel-stat:hover {
+            border-color: var(--accent-green);
+            box-shadow: var(--glow-green);
+        }
+
+        .pixel-stat .stat-icon { font-size: 28px; margin-bottom: 4px; }
+
+        .pixel-stat .stat-value {
+            font-family: var(--font-display);
+            font-size: 24px;
+            margin: 6px 0;
+        }
+
+        .pixel-stat .stat-label {
+            font-family: var(--font-ui);
+            font-size: 12px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .pixel-list-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            border-bottom: 2px solid var(--border-color);
+            font-size: 18px;
+            transition: background 0.15s;
+        }
+
+        .pixel-list-item:hover { background: var(--bg-hover); }
+        .pixel-list-item:last-child { border-bottom: none; }
+
+        .pixel-alert {
+            font-family: var(--font-body);
+            padding: 14px 16px;
+            border: var(--pixel-border);
+            margin-bottom: 16px;
+            font-size: 18px;
+            line-height: 1.5;
+            position: relative;
+            z-index: 100;
+            animation: alert-in 0.3s ease;
+        }
+
+        .alerts-fixed {
+            position: fixed;
+            top: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 9999;
+            width: 90%;
+            max-width: 1000px;
+            pointer-events: none;
+        }
+
+        .alerts-fixed .pixel-alert {
+            pointer-events: auto;
+        }
+
+        @keyframes alert-in {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .pixel-alert-warning { background: rgba(255, 217, 61, 0.15); border-color: var(--accent-yellow); color: var(--accent-yellow); }
+        .pixel-alert-success { background: rgba(0, 230, 160, 0.15); border-color: var(--accent-green); color: var(--accent-green); }
+        .pixel-alert-error { background: rgba(255, 107, 107, 0.15); border-color: var(--accent-red); color: var(--accent-red); }
+        .pixel-alert-info { background: rgba(74, 158, 255, 0.15); border-color: var(--accent-blue); color: var(--accent-blue); }
+
+        .pixel-badge {
+            font-family: var(--font-ui);
+            display: inline-block;
+            padding: 3px 8px;
+            font-size: 11px;
+            border: 2px solid;
+            text-transform: uppercase;
+        }
+
+        .pixel-badge-green { border-color: var(--accent-green); color: var(--accent-green); }
+        .pixel-badge-red { border-color: var(--accent-red); color: var(--accent-red); }
+        .pixel-badge-yellow { border-color: var(--accent-yellow); color: var(--accent-yellow); }
+        .pixel-badge-blue { border-color: var(--accent-blue); color: var(--accent-blue); }
+        .pixel-badge-purple { border-color: var(--accent-purple); color: var(--accent-purple); }
+
+        .pixel-log {
+            background: var(--bg-input);
+            border: var(--pixel-border);
+            padding: 14px;
+            font-family: var(--font-body);
+            font-size: 18px;
+            max-height: 500px;
+            overflow-y: auto;
+            color: var(--accent-green);
+            line-height: 1.4;
+        }
+
+        .pixel-log .log-error { color: var(--accent-red); }
+        .pixel-log .log-warning { color: var(--accent-yellow); }
+        .pixel-log .log-info { color: var(--accent-green); }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-3px); }
+        }
+        .pixel-float { animation: float 3s ease-in-out infinite; }
+
+        @keyframes blink-cursor {
+            0%, 100% { border-right-color: var(--accent-green); }
+            50% { border-right-color: transparent; }
+        }
+
+        @media (max-width: 768px) {
+            .pixel-navbar {
+                flex-direction: column;
+                gap: 10px;
+                padding: 10px;
+            }
+            .pixel-navbar .nav-left { flex-direction: column; gap: 10px; }
+            .pixel-navbar .nav-links { flex-wrap: wrap; justify-content: center; }
+            .pixel-grid-2, .pixel-grid-3, .pixel-grid-4 { grid-template-columns: 1fr !important; }
+            .pixel-stat .stat-value { font-size: 20px; }
+        }
+
+        ::-webkit-scrollbar { width: 10px; }
+        ::-webkit-scrollbar-track { background: var(--scrollbar-track); border: 2px solid var(--border-color); }
+        ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border: 2px solid var(--border-color); }
+        ::-webkit-scrollbar-thumb:hover { background: var(--accent-purple); }
+
+        .pixel-form-group { margin-bottom: 14px; }
+
+        .pixel-form-label {
+            font-family: var(--font-ui);
+            display: block;
+            margin-bottom: 6px;
+            font-size: 13px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .pixel-grid { display: grid; gap: 14px; }
+        .pixel-grid-2 { grid-template-columns: repeat(2, 1fr); }
+        .pixel-grid-3 { grid-template-columns: repeat(3, 1fr); }
+        .pixel-grid-4 { grid-template-columns: repeat(4, 1fr); }
+
+        .text-green { color: var(--accent-green); }
+        .text-red { color: var(--accent-red); }
+        .text-yellow { color: var(--accent-yellow); }
+        .text-blue { color: var(--accent-blue); }
+        .text-purple { color: var(--accent-purple); }
+        .text-gray { color: var(--text-muted); }
+        .text-center { text-align: center; }
+        .text-sm { font-size: 16px; }
+        .text-xs { font-size: 14px; }
+        .text-lg { font-size: 24px; }
+        .mt-2 { margin-top: 8px; }
+        .mt-4 { margin-top: 16px; }
+        .mb-2 { margin-bottom: 8px; }
+        .mb-4 { margin-bottom: 16px; }
+        .d-flex { display: flex; }
+        .gap-2 { gap: 8px; }
+        .gap-4 { gap: 16px; }
+        .align-center { align-items: center; }
+        .justify-between { justify-content: space-between; }
+        .flex-grow { flex-grow: 1; }
+
+        .pixel-divider {
+            border: none;
+            border-top: 2px dashed var(--border-color);
+            margin: 14px 0;
+        }
+
+        .pixel-link {
+            font-family: var(--font-ui);
+            color: var(--accent-blue);
+            text-decoration: none;
+            border-bottom: 1px dashed var(--accent-blue);
+            transition: all 0.15s;
+        }
+
+        .pixel-link:hover { color: var(--accent-green); border-color: var(--accent-green); }
+
+        a.pixel-btn {
+            text-decoration: none;
+            display: inline-flex;
+        }
+
+        .info-box {
+            padding: 14px;
+            border: 2px solid var(--border-color);
+            font-family: var(--font-body);
+            font-size: 18px;
+            line-height: 1.6;
+        }
+
+        .info-box .info-title {
+            font-family: var(--font-display);
+            font-size: 12px;
+            margin-bottom: 8px;
+        }
+
+        .info-box ol, .info-box ul {
+            margin: 0;
+            padding-left: 24px;
+        }
+
+        .info-box li {
+            margin-bottom: 4px;
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <nav class="pixel-navbar">
+        <div class="nav-left">
+            <a class="brand pixel-float" href="/">
+                <i class="bi bi-chat-dots"></i> 微信自动回复
+            </a>
+            <div class="nav-links">
+                <a href="/" class="{% if request.path == '/' %}active{% endif %}">
+                    <i class="bi bi-house"></i> 首页
+                </a>
+                <a href="/contacts" class="{% if request.path == '/contacts' %}active{% endif %}">
+                    <i class="bi bi-people"></i> 联系人
+                </a>
+                <a href="/ai-config" class="{% if request.path == '/ai-config' %}active{% endif %}">
+                    <i class="bi bi-robot"></i> AI配置
+                </a>
+                <a href="/logs" class="{% if request.path == '/logs' %}active{% endif %}">
+                    <i class="bi bi-journal-text"></i> 日志
+                </a>
+                <a href="/memory" class="pixel-nav-item {% if request.path == '/memory' %}active{% endif %}">
+                    <i class="bi bi-database"></i> 记忆
+                </a>
+            </div>
+        </div>
+        <div class="nav-right">
+            <button class="theme-toggle" onclick="toggleTheme()" title="切换主题">
+                <span class="theme-icon">🌙</span>
+                <span class="label">NIGHT</span>
+            </button>
+        </div>
+    </nav>
+
+    <div id="alerts" class="alerts-fixed"></div>
+
+    <main class="pixel-container">
+        {% block content %}{% endblock %}
+    </main>
+
+    <script>
+        function getTheme() {
+            return localStorage.getItem('pixel-theme') || 'dark';
+        }
+
+        function setTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('pixel-theme', theme);
+            const btn = document.querySelector('.theme-toggle');
+            if (btn) {
+                const icon = btn.querySelector('.theme-icon');
+                const label = btn.querySelector('.label');
+                if (theme === 'dark') {
+                    icon.textContent = '🌙';
+                    label.textContent = 'NIGHT';
+                } else {
+                    icon.textContent = '☀️';
+                    label.textContent = 'DAY';
+                }
+            }
+        }
+
+        function toggleTheme() {
+            const current = getTheme();
+            const next = current === 'dark' ? 'light' : 'dark';
+            setTheme(next);
+        }
+
+        setTheme(getTheme());
+
+        function showAlert(msg, type='info') {
+            const c = document.getElementById('alerts');
+            c.innerHTML = `<div class="pixel-alert pixel-alert-${type}">${msg}</div>`;
+            setTimeout(() => c.innerHTML = '', 4000);
+        }
+
+        async function api(url, opts={}) {
+            try {
+                const r = await fetch(url, {
+                    headers: {'Content-Type': 'application/json'},
+                    ...opts
+                });
+                const data = await r.json();
+                if (!r.ok) {
+                    data._status = r.status;
+                    data._ok = false;
+                } else {
+                    data._ok = true;
+                }
+                return data;
+            } catch (e) {
+                return {error: '网络错误: ' + e.message, _ok: false};
+            }
+        }
+    </script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

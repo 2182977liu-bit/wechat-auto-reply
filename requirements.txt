@@ -1,0 +1,12 @@
+# 微信自动化（支持微信4.x版本）
+# 免费版：支持微信最高 4.1.8.107
+wxauto4
+# Plus版（可选）：支持微信最高 4.1.9.35，需要激活码
+# wxautox4
+
+# AI模型调用（兼容DeepSeek/通义千问/小米等）
+openai
+
+# Web界面
+flask
+flask-cors

@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}联系人管理{% endblock %}
+
+{% block content %}
+<div class="pixel-card mb-4">
+    <div class="pixel-card-header">
+        <span><i class="bi bi-person-plus"></i> 添加联系人</span>
+    </div>
+    <div class="pixel-card-body">
+        <form id="add-form" class="d-flex gap-4">
+            <div class="flex-grow">
+                <input type="text" class="pixel-input" id="name" placeholder="输入微信联系人或群组名称" required>
+            </div>
+            <button type="submit" class="pixel-btn pixel-btn-green">
+                <i class="bi bi-plus"></i> 添加
+            </button>
+        </form>
+    </div>
+</div>
+
+<div class="pixel-card">
+    <div class="pixel-card-header">
+        <span><i class="bi bi-people"></i> 监控列表</span>
+        <span class="pixel-badge pixel-badge-blue">{{ contacts|length }} 个</span>
+    </div>
+    <div class="pixel-card-body" style="padding: 0;">
+        {% if contacts %}
+            {% for c in contacts %}
+            <div class="pixel-list-item">
+                <div class="d-flex align-center gap-2">
+                    <i class="bi bi-person text-blue"></i>
+                    <span>{{ c }}</span>
+                </div>
+                <button class="pixel-btn pixel-btn-red pixel-btn-sm" onclick="delContact('{{ c }}')">
+                    <i class="bi bi-trash"></i> 删除
+                </button>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="text-center text-gray" style="padding: 40px 16px;">
+                <i class="bi bi-inbox" style="font-size: 32px; display: block; margin-bottom: 12px;"></i>
+                <p>暂无联系人，请在上方添加</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="pixel-card mt-4">
+    <div class="pixel-card-header">
+        <span><i class="bi bi-question-circle"></i> 使用说明</span>
+    </div>
+    <div class="pixel-card-body">
+        <ul style="margin: 0; padding-left: 24px; line-height: 2;">
+            <li>联系人名称必须与微信昵称完全一致</li>
+            <li>支持添加群聊名称，用于监控群消息</li>
+            <li>删除联系人后将不再监控该联系人</li>
+            <li>建议先测试连接微信后再添加联系人</li>
+        </ul>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('add-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const name = document.getElementById('name').value.trim();
+    if (!name) return;
+    try {
+        const d = await api('/api/contacts', {method:'POST', body:JSON.stringify({name})});
+        if (d._ok) {
+            showAlert(d.msg || '添加成功', 'success');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showAlert(d.error || '添加失败', 'error');
+        }
+    } catch (e) {
+        showAlert('添加失败: ' + e.message, 'error');
+    }
+});
+
+async function delContact(name) {
+    if (!confirm(`确定删除 "${name}"？`)) return;
+    try {
+        const d = await api(`/api/contacts/${encodeURIComponent(name)}`, {method:'DELETE'});
+        if (d._ok) {
+            showAlert(d.msg || '删除成功', 'success');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showAlert(d.error || '删除失败', 'error');
+        }
+    } catch (e) {
+        showAlert('删除失败: ' + e.message, 'error');
+    }
+}
+</script>
+{% endblock %}

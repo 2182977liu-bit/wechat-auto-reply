@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}日志查看{% endblock %}
+
+{% block content %}
+<div class="pixel-card mb-4">
+    <div class="pixel-card-header">
+        <span><i class="bi bi-journal-text"></i> 系统日志</span>
+        <div class="d-flex gap-2">
+            <button class="pixel-btn pixel-btn-blue pixel-btn-sm" onclick="loadLogs()">
+                <i class="bi bi-arrow-clockwise"></i> 刷新
+            </button>
+            <button class="pixel-btn pixel-btn-green pixel-btn-sm" onclick="toggleAutoRefresh()">
+                <i class="bi bi-arrow-repeat"></i> 自动刷新
+            </button>
+        </div>
+    </div>
+    <div class="pixel-card-body" style="padding: 0;">
+        <div id="log-content" class="pixel-log" style="max-height: 600px; min-height: 300px;">
+            <div class="text-gray">加载中...</div>
+        </div>
+    </div>
+</div>
+
+<div class="pixel-grid pixel-grid-3">
+    <div class="pixel-stat">
+        <div class="stat-icon"><i class="bi bi-file-text text-blue"></i></div>
+        <div class="stat-value text-blue" id="total-logs">-</div>
+        <div class="stat-label">总日志</div>
+    </div>
+    <div class="pixel-stat">
+        <div class="stat-icon"><i class="bi bi-x-circle text-red"></i></div>
+        <div class="stat-value text-red" id="error-logs">-</div>
+        <div class="stat-label">错误</div>
+    </div>
+    <div class="pixel-stat">
+        <div class="stat-icon"><i class="bi bi-exclamation-triangle text-yellow"></i></div>
+        <div class="stat-value text-yellow" id="warning-logs">-</div>
+        <div class="stat-label">警告</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let autoRefreshInterval = null;
+let isAutoRefresh = false;
+
+async function loadLogs() {
+    const d = await api('/api/logs?lines=500');
+    const el = document.getElementById('log-content');
+
+    if (d.logs && d.logs.length > 0) {
+        let html = '';
+        let errorCount = 0;
+        let warningCount = 0;
+
+        d.logs.forEach(line => {
+            let cssClass = '';
+            if (line.includes('ERROR') || line.includes('错误')) {
+                cssClass = 'log-error';
+                errorCount++;
+            } else if (line.includes('WARNING') || line.includes('警告')) {
+                cssClass = 'log-warning';
+                warningCount++;
+            } else if (line.includes('INFO') || line.includes('成功')) {
+                cssClass = 'log-info';
+            }
+            html += `<div class="${cssClass}">${escapeHtml(line)}</div>`;
+        });
+
+        el.innerHTML = html;
+        el.scrollTop = el.scrollHeight;
+
+        document.getElementById('total-logs').textContent = d.logs.length;
+        document.getElementById('error-logs').textContent = errorCount;
+        document.getElementById('warning-logs').textContent = warningCount;
+    } else {
+        el.innerHTML = '<div class="text-gray">暂无日志</div>';
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function toggleAutoRefresh() {
+    if (isAutoRefresh) {
+        clearInterval(autoRefreshInterval);
+        isAutoRefresh = false;
+        showAlert('已关闭自动刷新', 'info');
+    } else {
+        autoRefreshInterval = setInterval(loadLogs, 3000);
+        isAutoRefresh = true;
+        showAlert('已开启自动刷新（每3秒）', 'success');
+    }
+}
+
+loadLogs();
+</script>
+{% endblock %}

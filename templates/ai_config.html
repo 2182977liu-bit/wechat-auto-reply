@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}AI配置{% endblock %}
+
+{% block content %}
+<div class="pixel-card mb-4">
+    <div class="pixel-card-header">
+        <span><i class="bi bi-star"></i> 默认模型</span>
+    </div>
+    <div class="pixel-card-body">
+        <div class="d-flex gap-4 align-center">
+            <div class="flex-grow">
+                <select class="pixel-select" id="default-model">
+                    {% for name in ai.models %}
+                    <option value="{{ name }}" {% if name == ai.default_model %}selected{% endif %}>{{ name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button class="pixel-btn pixel-btn-yellow" onclick="switchModel()">
+                <i class="bi bi-arrow-repeat"></i> 切换
+            </button>
+        </div>
+    </div>
+</div>
+
+{% for name, cfg in ai.models.items() %}
+<div class="pixel-card mb-4">
+    <div class="pixel-card-header">
+        <span><i class="bi bi-robot"></i> {{ name }}</span>
+        {% if name == ai.default_model %}
+        <span class="pixel-badge pixel-badge-green">默认</span>
+        {% endif %}
+    </div>
+    <div class="pixel-card-body">
+        <form onsubmit="saveModel('{{ name }}', event)">
+            <div class="pixel-grid pixel-grid-2 mb-4">
+                <div class="pixel-form-group">
+                    <label class="pixel-form-label">API Key</label>
+                    <input type="password" class="pixel-input" id="{{ name }}-key" value="{{ cfg.api_key }}" placeholder="输入API密钥">
+                </div>
+                <div class="pixel-form-group">
+                    <label class="pixel-form-label">Base URL</label>
+                    <input type="text" class="pixel-input" id="{{ name }}-url" value="{{ cfg.base_url }}" placeholder="输入API地址">
+                </div>
+                <div class="pixel-form-group">
+                    <label class="pixel-form-label">模型名称</label>
+                    <input type="text" class="pixel-input" id="{{ name }}-model" value="{{ cfg.model }}" placeholder="输入模型名称">
+                </div>
+                <div class="pixel-form-group d-flex align-center" style="padding-top: 24px;">
+                    <button type="submit" class="pixel-btn pixel-btn-green flex-grow">
+                        <i class="bi bi-save"></i> 保存
+                    </button>
+                    <button type="button" class="pixel-btn pixel-btn-blue" style="margin-left: 8px;" onclick="testModel('{{ name }}')">
+                        <i class="bi bi-lightning"></i> 测试
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endfor %}
+
+<div class="pixel-card mt-4">
+    <div class="pixel-card-header">
+        <span><i class="bi bi-info-circle"></i> API说明</span>
+    </div>
+    <div class="pixel-card-body">
+        <div class="pixel-grid pixel-grid-3">
+            <div class="info-box" style="border-color: var(--accent-green);">
+                <div class="info-title text-green">DeepSeek</div>
+                URL: api.deepseek.com<br>
+                模型: deepseek-chat
+            </div>
+            <div class="info-box" style="border-color: var(--accent-yellow);">
+                <div class="info-title text-yellow">通义千问</div>
+                URL: dashscope.aliyuncs.com<br>
+                模型: qwen-turbo
+            </div>
+            <div class="info-box" style="border-color: var(--accent-blue);">
+                <div class="info-title text-blue">小米MiMo</div>
+                URL: token-plan-cn.xiaomimimo.com/v1<br>
+                模型: MiMo-V2.5
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function switchModel() {
+    const m = document.getElementById('default-model').value;
+    try {
+        const d = await api('/api/ai-config/default', {method:'POST', body:JSON.stringify({model:m})});
+        if (d._ok) {
+            showAlert(d.msg || '切换成功', 'success');
+        } else {
+            showAlert(d.error || '切换失败', 'error');
+        }
+    } catch (e) {
+        showAlert('切换失败: ' + e.message, 'error');
+    }
+}
+
+async function saveModel(name, e) {
+    e.preventDefault();
+    const data = {
+        api_key: document.getElementById(`${name}-key`).value,
+        base_url: document.getElementById(`${name}-url`).value,
+        model: document.getElementById(`${name}-model`).value
+    };
+    try {
+        const d = await api(`/api/ai-config/${name}`, {method:'POST', body:JSON.stringify(data)});
+        if (d._ok) {
+            showAlert(d.msg || '保存成功', 'success');
+        } else {
+            showAlert(d.error || '保存失败', 'error');
+        }
+    } catch (e) {
+        showAlert('保存失败: ' + e.message, 'error');
+    }
+}
+
+async function testModel(name) {
+    console.log('测试模型:', name);
+    try {
+        showAlert('测试中，请稍候...', 'info');
+        const d = await api(`/api/ai-config/test/${name}`, {method:'POST'});
+        console.log('测试结果:', d);
+        if (d._ok) {
+            showAlert(d.msg || '测试成功！', 'success');
+        } else {
+            showAlert(d.error || '测试失败！', 'error');
+        }
+    } catch (e) {
+        console.error('测试异常:', e);
+        showAlert('测试失败: ' + e.message, 'error');
+    }
+}
+</script>
+{% endblock %}
