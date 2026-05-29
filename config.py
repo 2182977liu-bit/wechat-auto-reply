@@ -26,6 +26,8 @@ DEFAULT_CONFIG = {
     },
     "ai": {
         "default_model": "deepseek",  # 默认AI模型
+        "reply_mode": "direct",  # 回复模式：direct=直接调用大模型，agent=外接智能体
+        "system_prompt": "你是一个友好的微信助手。根据收到的消息生成简洁、自然、有礼貌的回复。回复控制在100字以内。",  # 系统提示词
         "models": {
             "deepseek": {
                 "api_key": "",
@@ -42,7 +44,8 @@ DEFAULT_CONFIG = {
                 "base_url": "https://api.xiaomi.com",
                 "model": "MiLM"
             }
-        }
+        },
+        "agents": {}  # 智能体配置
     },
     "server": {
         "host": "0.0.0.0",

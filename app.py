@@ -100,6 +100,74 @@ def create_app(bot) -> Flask:
             return jsonify({"msg": "测试成功"})
         return jsonify({"error": "测试失败"}), 500
 
+    @app.route("/api/ai-config/reply-mode", methods=["POST"])
+    def api_reply_mode():
+        data = request.get_json()
+        mode = data.get("mode", "direct")
+        if mode not in ["direct", "agent"]:
+            return jsonify({"error": "无效的回复模式"}), 400
+        bot.config.setdefault("ai", {})["reply_mode"] = mode
+        save_config(bot.config)
+        return jsonify({"msg": f"已切换到{mode}模式"})
+
+    @app.route("/api/ai-config/add", methods=["POST"])
+    def api_add_model():
+        data = request.get_json()
+        name = data.get("name", "").strip()
+        if not name:
+            return jsonify({"error": "模型名称不能为空"}), 400
+        models = bot.config.setdefault("ai", {}).setdefault("models", {})
+        models[name] = {
+            "api_key": data.get("api_key", ""),
+            "base_url": data.get("base_url", ""),
+            "model": data.get("model", "")
+        }
+        save_config(bot.config)
+        return jsonify({"msg": f"已添加 {name}"})
+
+    @app.route("/api/ai-config/<model>", methods=["DELETE"])
+    def api_delete_model(model):
+        models = bot.config.get("ai", {}).get("models", {})
+        if model in models:
+            del models[model]
+            save_config(bot.config)
+            return jsonify({"msg": f"已删除 {model}"})
+        return jsonify({"error": "模型不存在"}), 404
+
+    @app.route("/api/ai-config/agent/add", methods=["POST"])
+    def api_add_agent():
+        data = request.get_json()
+        name = data.get("name", "").strip()
+        if not name:
+            return jsonify({"error": "智能体名称不能为空"}), 400
+        agents = bot.config.setdefault("ai", {}).setdefault("agents", {})
+        agents[name] = {
+            "api_key": data.get("api_key", ""),
+            "base_url": data.get("base_url", ""),
+            "model": data.get("model", "")
+        }
+        save_config(bot.config)
+        return jsonify({"msg": f"已添加智能体 {name}"})
+
+    @app.route("/api/ai-config/agent/<name>", methods=["DELETE"])
+    def api_delete_agent(name):
+        agents = bot.config.get("ai", {}).get("agents", {})
+        if name in agents:
+            del agents[name]
+            save_config(bot.config)
+            return jsonify({"msg": f"已删除智能体 {name}"})
+        return jsonify({"error": "智能体不存在"}), 404
+
+    @app.route("/api/ai-config/system-prompt", methods=["POST"])
+    def api_system_prompt():
+        data = request.get_json()
+        prompt = data.get("prompt", "")
+        bot.config.setdefault("ai", {})["system_prompt"] = prompt
+        save_config(bot.config)
+        if hasattr(bot.replier, 'system_prompt'):
+            bot.replier.system_prompt = prompt
+        return jsonify({"msg": "已保存系统提示词"})
+
     @app.route("/api/logs")
     def api_logs():
         lines = request.args.get("lines", 100, type=int)
