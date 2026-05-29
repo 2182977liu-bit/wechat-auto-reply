@@ -55,3 +55,12 @@ data/
 # Temporary files
 *.tmp
 *.bak
+
+# Test files
+test_*.py
+check_*.py
+
+# Temporary scripts
+*.bat
+*.ps1
+
