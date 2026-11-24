@@ -68,6 +68,10 @@ class AIReplier:
         return "\n".join(lines)
 
     def generate(self, message: str, contact: str = "default", model_name: str = None) -> Optional[str]:
+        # 外接智能体模式：走自定义智能体接口
+        if self.config.get("reply_mode") == "agent":
+            return self._generate_via_agent(message, contact)
+
         name = model_name or self.default_model
         client = self.clients.get(name)
         if not client:
@@ -126,6 +130,93 @@ class AIReplier:
             return reply
         except Exception as e:
             log.error(f"AI调用失败 [{name}]: {e}")
+            return None
+
+    # ---- 外接智能体 ----
+
+    def _agent_config(self) -> Optional[dict]:
+        agents = self.config.get("agents", {}) or {}
+        if not agents:
+            return None
+        active = self.config.get("active_agent")
+        if active in agents:
+            return agents[active]
+        return next(iter(agents.values()))
+
+    def _generate_via_agent(self, message: str, contact: str) -> Optional[str]:
+        cfg = self._agent_config()
+        if not cfg or not cfg.get("base_url"):
+            log.error("智能体模式已启用，但未配置有效的智能体（缺少 base_url）")
+            return None
+
+        history = []
+        if self.memory:
+            self.memory.add_message(contact, "user", message)
+            history = self.memory.get_recent_messages(contact, limit=20)
+
+        protocol = (cfg.get("protocol") or "webhook").lower()
+        try:
+            if protocol == "openai":
+                reply = self._call_openai_agent(cfg, history or [{"role": "user", "content": message}])
+            else:
+                reply = self._call_webhook_agent(cfg, message, contact, history)
+        except Exception as e:
+            log.error(f"智能体调用失败: {e}")
+            return None
+
+        if reply:
+            if self.memory:
+                self.memory.add_message(contact, "assistant", reply)
+            log.debug(f"智能体回复: {reply[:80]}")
+        else:
+            log.warning("智能体未返回有效回复")
+        return reply
+
+    def _call_openai_agent(self, cfg: dict, history: list) -> Optional[str]:
+        """OpenAI 兼容协议：豆包（火山方舟）等标准 chat/completions 接口"""
+        client = OpenAI(api_key=cfg.get("api_key", ""), base_url=cfg.get("base_url"))
+        messages = [{"role": "system", "content": self.system_prompt + self._media_prompt()}] + history
+        resp = client.chat.completions.create(
+            model=cfg.get("model", ""),
+            messages=messages,
+            temperature=0.7,
+            max_tokens=500,
+        )
+        return resp.choices[0].message.content
+
+    def _call_webhook_agent(self, cfg: dict, message: str, contact: str, history: list) -> Optional[str]:
+        """通用 Webhook：POST JSON，自动识别常见回复字段"""
+        import httpx
+        headers = {"Content-Type": "application/json"}
+        if cfg.get("api_key"):
+            headers["Authorization"] = "Bearer " + cfg["api_key"]
+        payload = {"message": message, "contact": contact, "history": history}
+        if cfg.get("model"):
+            payload["bot_id"] = cfg["model"]
+        resp = httpx.post(cfg["base_url"], json=payload, headers=headers, timeout=60)
+        resp.raise_for_status()
+        return self._extract_reply(resp.json())
+
+    @staticmethod
+    def _extract_reply(data) -> Optional[str]:
+        """从智能体响应中提取回复文本：reply/text/answer/output/content，支持 data/result 嵌套"""
+        if isinstance(data, str):
+            return data
+        if not isinstance(data, dict):
+            return None
+        for k in ("reply", "text", "answer", "output", "content", "message"):
+            v = data.get(k)
+            if isinstance(v, str) and v.strip():
+                return v
+        for k in ("data", "result"):
+            sub = data.get(k)
+            if isinstance(sub, (dict, str)):
+                r = AIReplier._extract_reply(sub)
+                if r:
+                    return r
+        try:
+            return data["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError):
             return None
 
     def test_model(self, model_name: str = None) -> bool:

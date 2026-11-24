@@ -3,21 +3,7 @@
 
 {% block extra_css %}
 <style>
-:root {
-    --bg-primary: #0d1117;
-    --bg-secondary: #161b22;
-    --bg-tertiary: #21262d;
-    --border-color: #30363d;
-    --text-primary: #e6edf3;
-    --text-secondary: #8b949e;
-    --accent-blue: #58a6ff;
-    --accent-green: #3fb950;
-    --accent-purple: #bc8cff;
-    --accent-orange: #d29922;
-    --accent-red: #f85149;
-    --radius: 12px;
-    --shadow: 0 2px 8px rgba(0,0,0,0.3);
-}
+/* 配色变量由 base.html 主题系统统一提供，本页只定义组件样式 */
 
 .config-container {
     max-width: 1200px;
@@ -688,8 +674,8 @@
             </div>
             <div class="mode-title">外接智能体</div>
             <div class="mode-desc">
-                接入 Coze、Dify、FastGPT 等智能体平台，支持知识库、插件、工作流。
-                <br>适合：复杂场景、知识问答
+                通过通用接口接入任何智能体：豆包、自建 Agent、任意 Webhook 服务。
+                <br>适合：复杂场景、知识问答、自定义工作流
             </div>
         </div>
     </div>
@@ -840,14 +826,14 @@
                 <!-- 智能体说明 -->
                 <div class="info-box">
                     <div class="info-box-title">
-                        <i class="bi bi-info-circle"></i> 支持的智能体平台
+                        <i class="bi bi-info-circle"></i> 通用智能体接入说明
                     </div>
                     <div class="info-box-content">
-                        <strong>Coze（扣子）</strong> - 字节跳动智能体平台，支持插件和工作流<br>
-                        <strong>Dify</strong> - 开源 LLMOps 平台，支持 RAG 和 Agent<br>
-                        <strong>FastGPT</strong> - 开源知识库问答系统<br>
-                        <strong>百度文心</strong> - 百度智能体平台<br>
-                        <strong>阿里百炼</strong> - 阿里云智能体平台
+                        <strong>OpenAI 兼容协议</strong> - 适合豆包（火山方舟）等标准接口，填 Base URL + API Key + 模型/接入点 ID 即可<br>
+                        <strong>通用 Webhook</strong> - 适合自己做的智能体：系统会向你的地址 POST JSON
+                        <code>{"message": "用户消息", "contact": "联系人", "history": [...]}</code>，
+                        返回 JSON 里包含 <code>reply / text / answer / output / content</code> 任一字段即作为回复（支持嵌套在 data/result 里）<br>
+                        <strong>鉴权</strong> - 填了 API Key 会带 <code>Authorization: Bearer &lt;key&gt;</code> 请求头
                     </div>
                 </div>
             </div>
@@ -919,42 +905,39 @@
         </div>
         <div class="modal-body">
             <div class="preset-grid" style="margin-bottom: 20px;">
-                <div class="preset-item" onclick="selectAgentPreset('coze')">
-                    <div class="preset-icon">🎯</div>
-                    <div class="preset-name">Coze</div>
-                    <div class="preset-desc">字节跳动</div>
+                <div class="preset-item" onclick="selectAgentPreset('doubao')">
+                    <div class="preset-icon">🤖</div>
+                    <div class="preset-name">豆包</div>
+                    <div class="preset-desc">火山方舟接入点</div>
                 </div>
-                <div class="preset-item" onclick="selectAgentPreset('dify')">
-                    <div class="preset-icon">🔮</div>
-                    <div class="preset-name">Dify</div>
-                    <div class="preset-desc">开源平台</div>
-                </div>
-                <div class="preset-item" onclick="selectAgentPreset('fastgpt')">
-                    <div class="preset-icon">⚡</div>
-                    <div class="preset-name">FastGPT</div>
-                    <div class="preset-desc">知识库问答</div>
-                </div>
-                <div class="preset-item" onclick="selectAgentPreset('custom')">
+                <div class="preset-item" onclick="selectAgentPreset('webhook')">
                     <div class="preset-icon">🔧</div>
                     <div class="preset-name">自定义</div>
-                    <div class="preset-desc">OpenAI 兼容</div>
+                    <div class="preset-desc">任意 Webhook</div>
                 </div>
             </div>
             <div class="form-group">
                 <label class="form-label">平台名称</label>
-                <input type="text" class="form-input" id="new-agent-name" placeholder="例如：my-coze">
+                <input type="text" class="form-input" id="new-agent-name" placeholder="例如：my-agent">
+            </div>
+            <div class="form-group">
+                <label class="form-label">接口协议</label>
+                <select class="form-input" id="new-agent-protocol">
+                    <option value="openai">OpenAI 兼容（chat/completions）</option>
+                    <option value="webhook">通用 Webhook（JSON 收发）</option>
+                </select>
             </div>
             <div class="form-group">
                 <label class="form-label">API Key</label>
-                <input type="password" class="form-input" id="new-agent-key" placeholder="输入 API Key">
+                <input type="password" class="form-input" id="new-agent-key" placeholder="输入 API Key（Webhook 不需要可留空）">
             </div>
             <div class="form-group">
                 <label class="form-label">Base URL</label>
-                <input type="text" class="form-input" id="new-agent-url" placeholder="https://api.example.com/v1">
+                <input type="text" class="form-input" id="new-agent-url" placeholder="https://ark.cn-beijing.volces.com/api/v3 或你的 Webhook 地址">
             </div>
             <div class="form-group">
-                <label class="form-label">模型/Bot ID</label>
-                <input type="text" class="form-input" id="new-agent-id" placeholder="例如：bot_id 或 model_name">
+                <label class="form-label">模型/接入点 ID</label>
+                <input type="text" class="form-input" id="new-agent-id" placeholder="OpenAI 协议填模型或 ep-xxx；Webhook 可选">
             </div>
         </div>
         <div class="modal-footer">
@@ -1219,18 +1202,17 @@ async function addModel() {
 // 选择智能体预设
 function selectAgentPreset(preset) {
     const presets = {
-        coze: {name: 'coze', url: 'https://api.coze.cn/open_api/v2', id: ''},
-        dify: {name: 'dify', url: 'https://api.dify.ai/v1', id: ''},
-        fastgpt: {name: 'fastgpt', url: 'https://fastgpt.in/api/v1', id: ''},
-        custom: {name: '', url: '', id: ''}
+        doubao: {name: 'doubao', url: 'https://ark.cn-beijing.volces.com/api/v3', id: '', protocol: 'openai'},
+        webhook: {name: '', url: '', id: '', protocol: 'webhook'}
     };
-    
+
     const p = presets[preset];
     if (!p) return;
-    
+
     document.getElementById('new-agent-name').value = p.name;
     document.getElementById('new-agent-url').value = p.url;
     document.getElementById('new-agent-id').value = p.id;
+    document.getElementById('new-agent-protocol').value = p.protocol;
     
     // 标记选中状态
     document.querySelectorAll('#add-agent-modal .preset-item').forEach(item => item.classList.remove('selected'));
@@ -1243,16 +1225,17 @@ async function addAgent() {
     const key = document.getElementById('new-agent-key').value.trim();
     const url = document.getElementById('new-agent-url').value.trim();
     const id = document.getElementById('new-agent-id').value.trim();
-    
-    if (!name || !key) {
-        showAlert('请填写平台名称和 API Key', 'warning');
+    const protocol = document.getElementById('new-agent-protocol').value;
+
+    if (!name || !url) {
+        showAlert('请填写平台名称和 Base URL', 'warning');
         return;
     }
-    
+
     try {
         const d = await api('/api/ai-config/agent/add', {
             method: 'POST',
-            body: JSON.stringify({name, api_key: key, base_url: url, model: id})
+            body: JSON.stringify({name, api_key: key, base_url: url, model: id, protocol})
         });
         
         if (d._ok) {

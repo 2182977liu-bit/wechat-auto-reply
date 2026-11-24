@@ -4,12 +4,34 @@
 {% block content %}
 <div class="pixel-card mb-4">
     <div class="pixel-card-header">
-        <span><i class="bi bi-person-plus"></i> 添加联系人</span>
+        <span><i class="bi bi-people"></i> 从微信添加</span>
+        <button class="pixel-btn pixel-btn-blue pixel-btn-sm" onclick="loadWechatContacts()" id="load-btn">
+            <i class="bi bi-arrow-clockwise"></i> 读取会话列表
+        </button>
+    </div>
+    <div class="pixel-card-body">
+        <form class="d-flex gap-4 mb-2" onsubmit="event.preventDefault(); loadWechatContacts(document.getElementById('wx-search').value);">
+            <div class="flex-grow">
+                <input type="text" class="pixel-input" id="wx-search" placeholder="搜索微信联系人：昵称 / 备注 / 微信号">
+            </div>
+            <button type="submit" class="pixel-btn pixel-btn-blue">
+                <i class="bi bi-search"></i> 搜索
+            </button>
+        </form>
+        <div id="wx-result" class="text-gray text-sm" style="padding: 8px 4px;">
+            点击「读取会话列表」显示最近会话，或输入关键词搜索全部联系人。点选即可加入监控。
+        </div>
+    </div>
+</div>
+
+<div class="pixel-card mb-4">
+    <div class="pixel-card-header">
+        <span><i class="bi bi-pencil"></i> 手动添加</span>
     </div>
     <div class="pixel-card-body">
         <form id="add-form" class="d-flex gap-4">
             <div class="flex-grow">
-                <input type="text" class="pixel-input" id="name" placeholder="输入微信联系人或群组名称" required>
+                <input type="text" class="pixel-input" id="name" placeholder="输入微信联系人或群组名称（与微信显示完全一致）" required>
             </div>
             <button type="submit" class="pixel-btn pixel-btn-green">
                 <i class="bi bi-plus"></i> 添加
@@ -20,7 +42,7 @@
 
 <div class="pixel-card">
     <div class="pixel-card-header">
-        <span><i class="bi bi-people"></i> 监控列表</span>
+        <span><i class="bi bi-eye"></i> 监控列表</span>
         <span class="pixel-badge pixel-badge-blue">{{ contacts|length }} 个</span>
     </div>
     <div class="pixel-card-body" style="padding: 0;">
@@ -39,45 +61,67 @@
         {% else %}
             <div class="text-center text-gray" style="padding: 40px 16px;">
                 <i class="bi bi-inbox" style="font-size: 32px; display: block; margin-bottom: 12px;"></i>
-                <p>暂无联系人，请在上方添加</p>
+                <p>暂无联系人，请从上方微信列表选择或手动添加</p>
             </div>
         {% endif %}
-    </div>
-</div>
-
-<div class="pixel-card mt-4">
-    <div class="pixel-card-header">
-        <span><i class="bi bi-question-circle"></i> 使用说明</span>
-    </div>
-    <div class="pixel-card-body">
-        <ul style="margin: 0; padding-left: 24px; line-height: 2;">
-            <li>联系人名称必须与微信昵称完全一致</li>
-            <li>支持添加群聊名称，用于监控群消息</li>
-            <li>删除联系人后将不再监控该联系人</li>
-            <li>建议先测试连接微信后再添加联系人</li>
-        </ul>
     </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-document.getElementById('add-form').addEventListener('submit', async e => {
-    e.preventDefault();
-    const name = document.getElementById('name').value.trim();
-    if (!name) return;
+async function addContact(name) {
     try {
         const d = await api('/api/contacts', {method:'POST', body:JSON.stringify({name})});
         if (d._ok) {
             showAlert(d.msg || '添加成功', 'success');
-            setTimeout(() => location.reload(), 1000);
+            setTimeout(() => location.reload(), 800);
         } else {
             showAlert(d.error || '添加失败', 'error');
         }
     } catch (e) {
         showAlert('添加失败: ' + e.message, 'error');
     }
+}
+
+document.getElementById('add-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const name = document.getElementById('name').value.trim();
+    if (name) addContact(name);
 });
+
+async function loadWechatContacts(q = '') {
+    const box = document.getElementById('wx-result');
+    box.innerHTML = '<span class="text-gray">读取中...</span>';
+    const d = await api('/api/contacts/wechat' + (q ? '?q=' + encodeURIComponent(q) : ''));
+    if (!d._ok) {
+        box.innerHTML = `<span class="text-red">${d.error || '读取失败'}</span>`;
+        return;
+    }
+    if (!d.contacts || d.contacts.length === 0) {
+        box.innerHTML = '<span class="text-gray">没有匹配的结果</span>';
+        return;
+    }
+    box.innerHTML = d.contacts.map(c => `
+        <div class="pixel-list-item" style="border-radius: 8px;">
+            <div class="d-flex align-center gap-2">
+                <i class="bi bi-person text-blue"></i>
+                <span>${escapeHtml(c.name)}</span>
+                ${c.summary ? `<span class="text-gray text-xs">${escapeHtml(c.summary)}</span>` : ''}
+            </div>
+            ${c.monitored
+                ? '<span class="pixel-badge pixel-badge-green">已监控</span>'
+                : `<button class="pixel-btn pixel-btn-green pixel-btn-sm" onclick="addContact('${escapeAttr(c.name)}')"><i class="bi bi-plus"></i> 监控</button>`}
+        </div>
+    `).join('');
+}
+
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+function escapeAttr(s) {
+    return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
 
 async function delContact(name) {
     if (!confirm(`确定删除 "${name}"？`)) return;
@@ -85,7 +129,7 @@ async function delContact(name) {
         const d = await api(`/api/contacts/${encodeURIComponent(name)}`, {method:'DELETE'});
         if (d._ok) {
             showAlert(d.msg || '删除成功', 'success');
-            setTimeout(() => location.reload(), 1000);
+            setTimeout(() => location.reload(), 800);
         } else {
             showAlert(d.error || '删除失败', 'error');
         }

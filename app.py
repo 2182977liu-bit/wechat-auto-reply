@@ -71,6 +71,44 @@ def create_app(bot) -> Flask:
         add_contact(bot.config, data["name"].strip())
         return jsonify({"msg": f"已添加 {data['name']}"})
 
+    @app.route("/api/contacts/wechat")
+    def api_wechat_contacts():
+        """从微信读取会话/联系人，供前端选择（q 参数为搜索关键词）"""
+        det = bot.detector
+        if not det.connected or det.db is None:
+            return jsonify({"error": "微信未连接，请先在首页启动机器人"}), 503
+        q = request.args.get("q", "").strip()
+        try:
+            items = []
+            if q:
+                rows = det.db.search_contact(q) or []
+                for r in rows:
+                    username = r.get("username") or ""
+                    name = r.get("remark") or r.get("nick_name") or username
+                    if username:
+                        items.append({"name": name, "username": username})
+            else:
+                sessions = det.db.get_sessions(limit=100) or []
+                for s in sessions:
+                    username = s.get("username") or ""
+                    if not username:
+                        continue
+                    try:
+                        name = det.db.get_nickname(username) or username
+                    except Exception:
+                        name = username
+                    items.append({
+                        "name": name,
+                        "username": username,
+                        "summary": (s.get("summary") or "")[:30],
+                    })
+            monitored = set(bot.config.get("wechat", {}).get("contacts", []))
+            for it in items:
+                it["monitored"] = it["name"] in monitored
+            return jsonify({"contacts": items})
+        except Exception as e:
+            return jsonify({"error": f"读取失败: {e}"}), 500
+
     @app.route("/api/contacts/<name>", methods=["DELETE"])
     def api_del_contact(name):
         remove_contact(bot.config, name)
@@ -144,7 +182,8 @@ def create_app(bot) -> Flask:
         agents[name] = {
             "api_key": data.get("api_key", ""),
             "base_url": data.get("base_url", ""),
-            "model": data.get("model", "")
+            "model": data.get("model", ""),
+            "protocol": data.get("protocol", "webhook")
         }
         save_config(bot.config)
         return jsonify({"msg": f"已添加智能体 {name}"})
