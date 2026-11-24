@@ -210,4 +210,20 @@ def create_app(bot) -> Flask:
         bot.memory.update_notes(contact, notes)
         return jsonify({"msg": "已更新备注"})
 
+    # ---- 知识库 API ----
+
+    @app.route("/api/knowledge/stats")
+    def api_knowledge_stats():
+        return jsonify(bot.knowledge.stats())
+
+    @app.route("/api/knowledge/reload", methods=["POST"])
+    def api_knowledge_reload():
+        bot.knowledge.reload()
+        return jsonify({"msg": "知识库已重载", **bot.knowledge.stats()})
+
+    @app.route("/api/knowledge/search")
+    def api_knowledge_search():
+        q = request.args.get("q", "")
+        return jsonify({"hits": bot.knowledge.search(q)})
+
     return app
