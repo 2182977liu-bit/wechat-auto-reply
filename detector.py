@@ -1,11 +1,17 @@
 """
-消息检测器（自研控制层，不依赖 wxauto / wxautox）
+消息检测器（纯 UI 自动化版，不依赖 wxauto / wxautox）
 
-后端采用 GitHub 开源逆向项目 wechatauto-replica（Apache-2.0）:
-  https://github.com/fanyuantaier/wechatauto-replica
-  - 读消息：本地 SQLCipher4 数据库解密（contact.db / message_*.db），增量水位去重
-  - 发消息：UIA 热激活 + 坐标/OCR 回退（wechatauto.guia.quick_send）
-已在微信 4.2.0.53 真机验证。要求：微信已登录、以管理员权限运行本程序。
+安全原则（2026-11-24 账号被强制下线后整改）：
+  - 不读取微信进程内存
+  - 不解密微信本地数据库（contact.db / message_*.db 一律不碰）
+  - 消息收发全部通过 Windows UI 自动化（系统无障碍接口）+ 模拟键鼠，
+    与真人操作官方客户端的路径一致
+
+实现：wechatauto-replica 的纯 UIA 子模块
+  https://github.com/fanyuantaier/wechatauto-replica （Apache-2.0）
+  - 读消息：ui.main.WeChatMainWnd + ChatBox.get_msgs()（UIA 控件树）
+  - 发消息：guia 模拟键鼠逐字输入 / quick_send（verify=False，禁止数据库回读）
+要求：微信已登录、主窗口存在。无需管理员权限。
 
 对外接口保持与旧版一致：connect / init_baseline / get_new_messages /
 send_reply / scan_contacts / get_connection_status / disconnect。
@@ -28,16 +34,14 @@ log = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
 RETRY_INTERVAL = 5
-FETCH_LIMIT = 100          # 每次轮询读取的最近消息条数
-SEEN_CAP = 5000            # 每个联系人水位表上限
 
 BACKEND_INFO = {
-    "name": "wechatauto-replica",
+    "name": "wechatauto-replica (UIA only)",
     "repo": "https://github.com/fanyuantaier/wechatauto-replica",
     "license": "Apache-2.0",
     "verified_wechat": "4.2.0.53",
-    "read": "本地 SQLCipher 数据库解密",
-    "send": "UIA 热激活 + 坐标/OCR 回退",
+    "read": "UIA 控件树（不读内存、不解密数据库）",
+    "send": "模拟键鼠逐字输入 + UIA 热激活",
 }
 
 
@@ -49,25 +53,32 @@ class Message:
     processed: bool = False
 
 
-def _msg_key(m: dict):
-    """跨分片唯一键：(shard, local_id, create_time)"""
-    return (m.get("shard"), m.get("local_id"), m.get("create_time"))
+def _diff_new(prev: list, curr: list) -> list:
+    """比较两轮可见消息快照，返回新增部分。
+
+    prev 的后缀与 curr 的前缀取最长重叠，重叠之后即新消息。
+    完全不重叠（例如会话被切换/清空）时返回空，宁可漏报也不把历史当新消息回复。
+    """
+    if not prev:
+        return curr
+    max_ol = min(len(prev), len(curr))
+    for ol in range(max_ol, 0, -1):
+        if prev[-ol:] == curr[:ol]:
+            return curr[ol:]
+    return []
 
 
 class WeChatDetector:
 
     def __init__(self, config: dict) -> None:
         self.config = config
-        self.db = None
+        self.ui = None               # WeChatMainWnd，纯 UIA
         self.connected = False
         self.last_error: str = ""
         self.nickname: str = ""
-        self.wxid: str = ""
         self.backend: str = BACKEND_INFO["name"]
-        # 每个联系人的已读水位 {key: create_time}
-        self._seen: dict[str, dict] = {}
-        # 显示名 -> username 缓存
-        self._username_cache: dict[str, str] = {}
+        # 每个联系人的可见消息快照 {contact: [(attr, type, content), ...]}
+        self._snap: dict[str, list] = {}
 
     # ---- 窗口 / 进程 ----
 
@@ -85,7 +96,7 @@ class WeChatDetector:
 
     def connect(self) -> bool:
         try:
-            from wechatauto import WeChatDB
+            from wechatauto.ui.main import WeChatMainWnd
         except ImportError:
             self.last_error = "未安装后端，请运行: pip install wechatauto-replica==1.3.0.1"
             log.error(self.last_error)
@@ -104,31 +115,18 @@ class WeChatDetector:
                     time.sleep(RETRY_INTERVAL)
                 continue
             try:
-                self.db = WeChatDB()
-                info = self.db.get_self_info() or {}
-                self.wxid = info.get("wxid") or info.get("username") or ""
-                self.nickname = info.get("nickname") or ""
-                if not self.nickname and self.wxid:
-                    try:
-                        self.nickname = self.db.get_nickname(self.wxid) or ""
-                    except Exception:
-                        pass
-                sessions = self.db.get_sessions(limit=5)
+                # 仅 attach 主窗口 UIA 控件树，不实例化任何 DB/内存读取组件
+                self.ui = WeChatMainWnd()
+                self.nickname = self.ui.nickname or ""
                 self.connected = True
                 self.last_error = ""
                 log.info(
-                    f"微信连接成功（用户: {self.nickname or self.wxid}），"
-                    f"后端: {self.backend}，会话示例 {len(sessions)} 个"
+                    f"微信连接成功（窗口: {self.nickname}），"
+                    "模式: 纯UI自动化（不读进程内存、不解密数据库）"
                 )
                 return True
             except Exception as e:
-                msg = str(e)
-                if "权限" in msg or "Access" in msg or "denied" in msg.lower():
-                    self.last_error = "权限不足：读取微信进程内存需要管理员权限，请以管理员身份运行"
-                elif "目录" in msg or "db_dir" in msg or "登录" in msg:
-                    self.last_error = "未找到微信数据库目录：请确认微信已登录，且本程序以管理员权限运行"
-                else:
-                    self.last_error = f"连接失败: {msg}"
+                self.last_error = f"连接失败: {e}"
                 log.error(self.last_error)
             if attempt < MAX_RETRIES:
                 time.sleep(RETRY_INTERVAL)
@@ -137,114 +135,77 @@ class WeChatDetector:
         return False
 
     def disconnect(self) -> None:
-        self.db = None
+        self.ui = None
         self.connected = False
-        self._seen.clear()
-        self._username_cache.clear()
+        self._snap.clear()
         log.info("微信已断开")
 
-    # ---- 联系人解析 ----
+    # ---- 会话读取 ----
 
-    def _resolve(self, contact: str) -> str:
-        """把昵称/备注解析成读库所需的 username"""
-        if contact in self._username_cache:
-            return self._username_cache[contact]
-        username = contact
+    def _chatbox(self, contact: str):
+        """切换到指定会话并返回 ChatBox（UIA）。失败返回 None。"""
         try:
-            hits = self.db.search_contact(contact) or []
-            exact = [
-                h for h in hits
-                if h.get("nickname") == contact or h.get("remark") == contact
-            ]
-            pick = (exact or hits)
-            if pick:
-                username = pick[0].get("username") or contact
+            cb = self.ui._get_chatbox(nickname=contact, exact=False)
+            if cb is None:
+                log.warning(f"未找到会话 [{contact}]，请确认名称与微信会话列表一致")
+            return cb
         except Exception as e:
-            log.debug(f"解析联系人 [{contact}] 失败，按原名使用: {e}")
-        self._username_cache[contact] = username
-        return username
-
-    def _is_self(self, m: dict) -> bool:
-        sender = m.get("sender_username") or ""
-        return bool(self.wxid) and sender == self.wxid
-
-    # ---- 基线 / 增量 ----
+            log.warning(f"打开会话失败 [{contact}]: {e}")
+            return None
 
     def init_baseline(self, contacts: list[str]) -> None:
         log.info("正在初始化消息基线...")
         for contact in contacts:
-            try:
-                username = self._resolve(contact)
-                msgs = self.db.get_messages(username, limit=FETCH_LIMIT) or []
-                seen = {_msg_key(m): m.get("create_time", 0) for m in msgs}
-                self._seen[contact] = seen
-                log.info(f"基线 [{contact}]: 记录 {len(seen)} 条历史消息")
-            except Exception as e:
-                log.warning(f"基线初始化失败 [{contact}]: {e}")
-                self._seen[contact] = {}
+            self._snap.pop(contact, None)
+            self.get_new_messages(contact)   # 首轮只建快照，不回复
         log.info("基线初始化完成")
 
-    def _trim_seen(self, contact: str) -> None:
-        seen = self._seen.get(contact, {})
-        if len(seen) > SEEN_CAP:
-            items = sorted(seen.items(), key=lambda kv: kv[1] or 0)
-            self._seen[contact] = dict(items[-SEEN_CAP:])
-
     def get_new_messages(self, contact: str) -> list[Message]:
-        if not self.connected or self.db is None:
+        if not self.connected or self.ui is None:
             return []
-        seen = self._seen.get(contact)
-        if seen is None:
-            # 首次见到该联系人（运行中新增）：先记基线，不回复历史消息
-            try:
-                username = self._resolve(contact)
-                msgs = self.db.get_messages(username, limit=FETCH_LIMIT) or []
-                self._seen[contact] = {_msg_key(m): m.get("create_time", 0) for m in msgs}
-                log.info(f"新联系人 [{contact}] 基线初始化：{len(msgs)} 条历史消息")
-            except Exception as e:
-                log.warning(f"新联系人 [{contact}] 基线初始化失败: {e}")
-                self._seen[contact] = {}
+        cb = self._chatbox(contact)
+        if cb is None:
             return []
+        time.sleep(0.3)   # 等右侧消息区渲染稳定
         try:
-            username = self._resolve(contact)
-            msgs = self.db.get_messages(username, limit=FETCH_LIMIT) or []
+            raw = cb.get_msgs() or []
         except Exception as e:
-            log.error(f"获取消息失败 [{contact}]: {e}")
+            log.error(f"读取消息失败 [{contact}]: {e}")
             return []
+
+        curr = []
+        for m in raw:
+            key = (getattr(m, "attr", ""), getattr(m, "type", ""), m.content or "")
+            curr.append((key, m))
+        keys = [k for k, _ in curr]
+
+        prev = self._snap.get(contact)
+        self._snap[contact] = keys
+        if prev is None:
+            # 首次见到该联系人（含运行中新增）：只记基线，不回复历史消息
+            log.info(f"基线 [{contact}]: 记录 {len(keys)} 条可见消息")
+            return []
+
+        new_keys = _diff_new(prev, keys)
+        if not new_keys:
+            return []
+        fresh = curr[len(curr) - len(new_keys):]
 
         new_msgs: list[Message] = []
-        for m in msgs:
-            key = _msg_key(m)
-            if key in seen:
+        for (attr, mtype, _), m in fresh:
+            # 自己发的(Self)、系统消息(system)、非文本：不回复
+            if attr != "Friend":
                 continue
-            seen[key] = m.get("create_time", 0)
-            # 自己发的、非文本消息只记水位不回复
-            if self._is_self(m):
-                continue
-            # wechatauto-replica 的 type 是中文枚举（文本/图片/语音...），
-            # 旧版 wxauto 是 int（文本=1），两种都要兼容，否则全部消息被静默跳过
-            mtype = m.get("type")
-            is_text = mtype == 1 or (
-                isinstance(mtype, str) and mtype.strip().lower() in ("1", "文本", "text")
-            )
-            if not is_text:
+            if mtype != "text":
                 log.debug(f"[{contact}] 跳过非文本消息 type={mtype!r}")
                 continue
-            content = (m.get("content") or "").strip()
+            content = (m.content or "").strip()
             if not content:
                 continue
-            ts = m.get("create_time")
-            try:
-                stamp = datetime.fromtimestamp(ts) if ts else datetime.now()
-            except Exception:
-                stamp = datetime.now()
-            msg = Message(sender=contact, content=content, timestamp=stamp)
-            new_msgs.append(msg)
-
-        self._trim_seen(contact)
+            new_msgs.append(Message(sender=contact, content=content, timestamp=datetime.now()))
         return new_msgs
 
-    # ---- 发送 ----
+    # ---- 发送（模拟键鼠，无数据库回读） ----
 
     @staticmethod
     def _type_text(inp, text: str) -> None:
@@ -292,18 +253,18 @@ class WeChatDetector:
             return False
 
     def send_reply(self, contact: str, text: str, input_mode: str = "typing") -> bool:
-        if not self.connected or self.db is None:
+        if not self.connected:
             return False
         try:
             from wechatauto.guia import quick_send
-            username = self._resolve(contact)
             sent = False
             if input_mode == "typing":
                 sent = self._type_like_human(contact, text)
                 if not sent:
                     log.warning("逐字输入不可用，回退到 quick_send")
             if not sent:
-                result = quick_send(text, username, verify=True)
+                # verify=False：禁止数据库回读确认（会触发进程内存读取）
+                result = quick_send(text, contact, verify=False)
                 # WxResponse 以 is_success 判真假，不能只认 is False
                 if not result:
                     log.error(f"发送失败 [{contact}]: 后端返回失败 {result}")
@@ -316,7 +277,7 @@ class WeChatDetector:
 
     def _send_media(self, contact: str, path, kind: str) -> bool:
         """发送图片/文件（表情包走 image 通道，GIF 同理）"""
-        if not self.connected or self.db is None:
+        if not self.connected:
             return False
         try:
             from wechatauto.guia import quick_send_file, quick_send_image
@@ -324,9 +285,8 @@ class WeChatDetector:
             if not p.is_file():
                 log.error(f"媒体文件不存在: {p}")
                 return False
-            username = self._resolve(contact)
             fn = quick_send_image if kind == "image" else quick_send_file
-            result = fn(str(p), username, verify=True)
+            result = fn(str(p), contact, verify=False)
             if not result:
                 log.error(f"媒体发送失败 [{contact}]: {result}")
                 return False

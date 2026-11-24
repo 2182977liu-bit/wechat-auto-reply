@@ -73,58 +73,34 @@ def create_app(bot) -> Flask:
 
     @app.route("/api/contacts/wechat")
     def api_wechat_contacts():
-        """从微信读取会话/联系人，供前端选择（q 参数为搜索关键词）"""
+        """从微信会话列表读取（纯 UIA，不读数据库），q 参数为名称过滤关键词"""
         det = bot.detector
-        if not det.connected or det.db is None:
+        if not det.connected or det.ui is None:
             return jsonify({"error": "微信未连接，请先在首页启动机器人"}), 503
-        q = request.args.get("q", "").strip()
+        q = request.args.get("q", "").strip().lower()
         try:
+            sessions = det.ui._session_api.get_session() or []
             items = []
-            if q:
-                rows = det.db.search_contact(q) or []
-                for r in rows:
-                    username = r.get("username") or ""
-                    nick = r.get("nick_name") or ""
-                    remark = r.get("remark") or ""
-                    name = remark or nick or username
-                    if username:
-                        items.append({
-                            "name": name,
-                            "username": username,
-                            "nickname": nick,
-                            "remark": remark,
-                            "is_group": username.endswith("@chatroom"),
-                        })
-            else:
-                sessions = det.db.get_sessions(limit=100) or []
-                for s in sessions:
-                    username = s.get("username") or ""
-                    if not username:
-                        continue
-                    nick, remark = "", ""
-                    try:
-                        # 精确反查昵称与备注，便于前端展示「备注（昵称）」
-                        for r in det.db.search_contact(username) or []:
-                            if r.get("username") == username:
-                                nick = r.get("nick_name") or ""
-                                remark = r.get("remark") or ""
-                                break
-                    except Exception:
-                        pass
-                    if not nick and not remark:
-                        try:
-                            nick = det.db.get_nickname(username) or username
-                        except Exception:
-                            nick = username
-                    name = remark or nick or username
-                    items.append({
-                        "name": name,
-                        "username": username,
-                        "nickname": nick,
-                        "remark": remark,
-                        "summary": (s.get("summary") or "")[:30],
-                        "is_group": username.endswith("@chatroom"),
-                    })
+            seen = set()
+            for s in sessions:
+                try:
+                    name = (s.name or "").strip()
+                except Exception:
+                    continue
+                if not name or name in seen:
+                    continue
+                seen.add(name)
+                if q and q not in name.lower():
+                    continue
+                items.append({
+                    "name": name,
+                    "username": name,
+                    "nickname": name,
+                    "remark": "",
+                    "summary": "",
+                    # UIA 会话列表拿不到群/个人标记，统一按会话处理
+                    "is_group": False,
+                })
             monitored = set(bot.config.get("wechat", {}).get("contacts", []))
             for it in items:
                 it["monitored"] = it["name"] in monitored

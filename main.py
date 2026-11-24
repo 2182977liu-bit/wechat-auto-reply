@@ -167,7 +167,9 @@ class WeChatBot:
                     if len(pending[c]) > 20:
                         pending[c] = pending[c][-20:]
 
-                for _ in range(int(interval * 2)):
+                # 轮询周期加随机抖动，避免固定机器节奏
+                wait = max(1.0, interval * random.uniform(0.8, 1.6))
+                for _ in range(int(wait * 2)):
                     if not self.running:
                         break
                     time.sleep(0.5)
