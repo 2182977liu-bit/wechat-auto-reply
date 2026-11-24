@@ -140,6 +140,45 @@ class WeChatDetector:
         self._snap.clear()
         log.info("微信已断开")
 
+    def is_alive(self) -> bool:
+        """连接是否仍然有效（窗口还在、UIA 控件还活着）"""
+        if not self.connected or self.ui is None:
+            return False
+        if not self._check_wechat_window():
+            return False
+        try:
+            return bool(self.ui.control.Exists(0))
+        except Exception:
+            return False
+
+    def _current_chat_matches(self, contact: str) -> bool:
+        """强校验：当前打开的会话标题必须等于目标（昵称或备注），防止回错人"""
+        try:
+            info = self.ui._chat_api.get_info() or {}
+        except Exception:
+            return False
+        target = contact.strip()
+        names = {
+            str(info.get("chat_name") or "").strip(),
+            str(info.get("chat_remark") or "").strip(),
+        }
+        return target in names
+
+    def _verify_sent_uia(self, contact: str, text: str, timeout: float = 4.0) -> bool:
+        """发送后 UIA 回读最后一条自己发的文本，确认已落地（不碰数据库）"""
+        norm = " ".join(text.split())
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                msgs = self.ui._chat_api.get_msgs() or []
+                for m in reversed(msgs):
+                    if getattr(m, "attr", "") == "Self" and getattr(m, "type", "") == "text":
+                        return " ".join((m.content or "").split()) == norm
+            except Exception:
+                pass
+            time.sleep(0.5)
+        return False
+
     # ---- 会话读取 ----
 
     def _chatbox(self, contact: str):
@@ -219,22 +258,31 @@ class WeChatDetector:
             else:
                 inp.type_unicode(ch)
 
-    def _type_like_human(self, contact: str, text: str) -> bool:
-        """真人输入效果：打开会话 -> 聚焦输入框 -> 逐字键入（后端自带拟人节奏）-> 回车。
-        任一步失败返回 False，由调用方回退到 quick_send。"""
+    def _type_like_human(self, contact: str, text: str) -> str:
+        """真人输入效果：打开会话 -> 校验目标 -> 聚焦输入框 -> 逐字键入 -> 回车 -> UIA 回读确认。
+
+        返回三态：
+          "sent"        已发送且 UIA 回读确认
+          "unconfirmed" 已按回车但回读未确认 —— 调用方禁止重发（避免重复投递）
+          "failed"      尚未按回车就失败 —— 调用方可安全回退 quick_send
+        """
         try:
             from wechatauto.guia import (
                 WeChatGUI, WinInput, VK_A, VK_DELETE, VK_RETURN,
             )
             gui = WeChatGUI()
             if not gui.ensure_visible():
-                return False
+                return "failed"
             if not gui.open_chat(contact):
-                return False
+                return "failed"
             time.sleep(0.6)
+            # 发送前强校验：当前会话必须是目标本人，防止回错人
+            if not self._current_chat_matches(contact):
+                log.error(f"目标校验失败：当前会话不是 [{contact}]，放弃发送")
+                return "failed"
             box = gui.get_input_box()
             if not box or not gui.focus_input(box):
-                return False
+                return "failed"
             inp = WinInput()
             inp.key(VK_A, ctrl=True)   # 清空输入框残留
             inp.key(VK_DELETE)
@@ -246,29 +294,39 @@ class WeChatDetector:
             self._type_text(inp, text)
             time.sleep(random.uniform(0.3, 0.8))
             inp.key(VK_RETURN)
-            time.sleep(0.8)
-            return True
+            # 回车已按下：无论确认与否都不能再重发
+            if self._verify_sent_uia(contact, text):
+                return "sent"
+            log.warning(f"[{contact}] 已按回车但 UIA 未确认落地，不重发")
+            return "unconfirmed"
         except Exception as e:
             log.warning(f"逐字输入失败: {e}")
-            return False
+            return "failed"
 
     def send_reply(self, contact: str, text: str, input_mode: str = "typing") -> bool:
         if not self.connected:
             return False
         try:
             from wechatauto.guia import quick_send
-            sent = False
             if input_mode == "typing":
-                sent = self._type_like_human(contact, text)
-                if not sent:
-                    log.warning("逐字输入不可用，回退到 quick_send")
-            if not sent:
-                # verify=False：禁止数据库回读确认（会触发进程内存读取）
-                result = quick_send(text, contact, verify=False)
-                # WxResponse 以 is_success 判真假，不能只认 is False
-                if not result:
-                    log.error(f"发送失败 [{contact}]: 后端返回失败 {result}")
+                state = self._type_like_human(contact, text)
+                if state == "sent":
+                    log.info(f"已回复 [{contact}]: {text[:50]}...")
+                    return True
+                if state == "unconfirmed":
+                    # 已投递但未确认：按失败计（触发熔断保护），但绝不重发
                     return False
+                log.warning("逐字输入不可用，回退到 quick_send")
+            # 回退路径同样先校验目标会话
+            if not self._current_chat_matches(contact):
+                log.error(f"目标校验失败：当前会话不是 [{contact}]，放弃发送")
+                return False
+            # verify=False：禁止数据库回读确认（会触发进程内存读取）
+            result = quick_send(text, contact, verify=False)
+            # WxResponse 以 is_success 判真假，不能只认 is False
+            if not result:
+                log.error(f"发送失败 [{contact}]: 后端返回失败 {result}")
+                return False
             log.info(f"已回复 [{contact}]: {text[:50]}...")
             return True
         except Exception as e:
@@ -286,6 +344,14 @@ class WeChatDetector:
                 log.error(f"媒体文件不存在: {p}")
                 return False
             fn = quick_send_image if kind == "image" else quick_send_file
+            # 媒体走 quick_send，会自行 open_chat；发送前强校验目标会话
+            if not self._current_chat_matches(contact):
+                # 先尝试切到目标会话再校验一次
+                self._chatbox(contact)
+                time.sleep(0.4)
+                if not self._current_chat_matches(contact):
+                    log.error(f"目标校验失败：当前会话不是 [{contact}]，放弃发送媒体")
+                    return False
             result = fn(str(p), contact, verify=False)
             if not result:
                 log.error(f"媒体发送失败 [{contact}]: {result}")

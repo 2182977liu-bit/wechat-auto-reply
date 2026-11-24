@@ -5,6 +5,7 @@
 
 import json
 import logging
+import logging.handlers
 from pathlib import Path
 
 # 项目根目录
@@ -31,7 +32,9 @@ def ensure_logging() -> None:
         if isinstance(h, logging.FileHandler) and getattr(h, "baseFilename", "") == target:
             return
     LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    fh = logging.FileHandler(LOG_PATH, encoding="utf-8")
+    fh = logging.handlers.RotatingFileHandler(
+        LOG_PATH, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
+    )
     fh.setFormatter(logging.Formatter(
         "%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
     ))
@@ -40,13 +43,15 @@ def ensure_logging() -> None:
 # 默认配置
 DEFAULT_CONFIG = {
     "wechat": {
-        "backend": "wechatauto-replica",  # 开源逆向后端（读库解密+UIA/OCR发送）
+        "backend": "wechatauto-replica (UIA only)",  # 纯 UI 自动化：不读进程内存、不解密数据库
         "window_title": "微信",
-        "scan_interval": 5,  # 扫描间隔（秒）
+        "scan_interval": 5,  # 扫描间隔基准（秒），实际带随机抖动
         "contacts": [],  # 要监控的联系人列表
         "reply_all": False,  # 是否回复所有消息
         "reply_cooldown_seconds": 10,  # 同一联系人两次回复的最小间隔（秒），冷却期内消息合并回复
         "max_replies_per_hour": 60,  # 每小时回复总数上限（滚动窗口）
+        "max_replies_per_day": 200,  # 每日回复总数上限（滚动窗口）
+        "quiet_hours": {"start": "23:00", "end": "07:00"},  # 夜间静默时段，期间不回复
         "max_consecutive_failures": 3,  # 连续发送失败达到该次数自动停机
         "input_mode": "typing"  # 发送方式：typing=模拟真人逐字输入，paste=quick_send 默认发送
     },
@@ -81,7 +86,8 @@ DEFAULT_CONFIG = {
     },
     "server": {
         "host": "0.0.0.0",
-        "port": 5000
+        "port": 5000,
+        "password": ""  # Web 控制台访问密码；留空则首次启动自动生成并写入此处
     }
 }
 
@@ -96,10 +102,12 @@ def load_config(path: Path = CONFIG_PATH) -> dict:
 
 
 def save_config(config: dict, path: Path = CONFIG_PATH) -> None:
-    """保存配置到文件"""
+    """保存配置到文件（先写临时文件再替换，避免写一半崩溃损坏配置）"""
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
+    tmp = path.with_suffix(".json.tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(config, f, ensure_ascii=False, indent=2)
+    tmp.replace(path)
 
 
 def add_contact(config: dict, name: str) -> bool:

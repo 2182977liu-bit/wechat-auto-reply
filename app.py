@@ -3,15 +3,18 @@ Web管理界面
 提供API和页面用于配置和管理系统
 """
 
+import logging
+import secrets
 import threading
 from pathlib import Path
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 from flask_cors import CORS
 
 from config import save_config, add_contact, remove_contact
 
 # 项目根目录
 ROOT = Path(__file__).parent
+log = logging.getLogger(__name__)
 
 
 def create_app(bot) -> Flask:
@@ -22,6 +25,48 @@ def create_app(bot) -> Flask:
         static_folder=str(ROOT / "static")
     )
     CORS(app)
+
+    # ---- 访问鉴权 ----
+    # 控制台绑定 0.0.0.0，局域网内任何人都能访问；必须加密码门槛。
+    server_cfg = bot.config.setdefault("server", {})
+    password = (server_cfg.get("password") or "").strip()
+    if not password:
+        password = secrets.token_urlsafe(9)
+        server_cfg["password"] = password
+        save_config(bot.config)
+        log.info(f"已自动生成 Web 访问密码: {password}（可在 config.json 的 server.password 修改）")
+    secret = server_cfg.get("secret_key")
+    if not secret:
+        secret = secrets.token_hex(32)
+        server_cfg["secret_key"] = secret
+        save_config(bot.config)
+    app.secret_key = secret
+
+    @app.route("/login", methods=["GET", "POST"])
+    def login():
+        error = ""
+        if request.method == "POST":
+            if (request.form.get("password") or "") == password:
+                session["authed"] = True
+                return redirect(url_for("index"))
+            error = "密码错误"
+        return render_template("login.html", error=error)
+
+    @app.route("/logout")
+    def logout():
+        session.pop("authed", None)
+        return redirect(url_for("login"))
+
+    @app.before_request
+    def require_auth():
+        # 登录页与静态资源放行，其余一律要求已登录
+        if request.endpoint in ("login", "static"):
+            return None
+        if not session.get("authed"):
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "未登录"}), 401
+            return redirect(url_for("login"))
+        return None
 
     @app.route("/")
     def index():
@@ -117,10 +162,15 @@ def create_app(bot) -> Flask:
     def api_update_ai(model):
         data = request.get_json()
         models = bot.config.setdefault("ai", {}).setdefault("models", {})
-        models.setdefault(model, {}).update(data)
+        cfg = models.setdefault(model, {})
+        # 前端不再回显密钥：留空 = 保留原密钥，只有填了新值才覆盖
+        incoming = dict(data)
+        if not (incoming.get("api_key") or "").strip():
+            incoming.pop("api_key", None)
+        cfg.update(incoming)
         save_config(bot.config)
         bot.replier.reload_models()   # 保存后立即生效，无需重启
-        return jsonify({"msg": f"已更新 {model}"})
+        return jsonify({"msg": f"已更新 {model}", "has_key": bool(cfg.get("api_key"))})
 
     @app.route("/api/ai-config/default", methods=["POST"])
     def api_switch_model():
@@ -144,6 +194,14 @@ def create_app(bot) -> Flask:
         data = request.get_json() or {}
         key = (data.get("api_key") or "").strip()
         base = (data.get("base_url") or "").strip().rstrip("/")
+        # 密钥留空时回退到该模型已保存的密钥/地址（前端不再回显密钥）
+        name = (data.get("name") or "").strip()
+        if name and (not key or not base):
+            saved = bot.config.get("ai", {}).get("models", {}).get(name, {})
+            if not key:
+                key = (saved.get("api_key") or "").strip()
+            if not base:
+                base = (saved.get("base_url") or "").strip().rstrip("/")
         if not base:
             return jsonify({"error": "请先填写 Base URL"}), 400
         try:

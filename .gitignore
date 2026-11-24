@@ -63,4 +63,6 @@ check_*.py
 # Temporary scripts
 *.bat
 *.ps1
+# 启动器需要随仓库分发
+!启动.bat
 

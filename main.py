@@ -8,6 +8,7 @@ import time
 import random
 import signal
 import logging
+import logging.handlers
 import threading
 from collections import deque
 
@@ -26,7 +27,9 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler(LOG_PATH, encoding="utf-8")
+        logging.handlers.RotatingFileHandler(
+            LOG_PATH, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
+        )
     ]
 )
 log = logging.getLogger(__name__)
@@ -80,34 +83,78 @@ class WeChatBot:
             pass
         log.info("已停止")
 
+    @staticmethod
+    def _in_quiet_hours(wc: dict) -> bool:
+        """是否处于夜间静默时段（支持跨午夜，如 23:00-07:00）"""
+        qh = wc.get("quiet_hours") or {}
+        start, end = qh.get("start", ""), qh.get("end", "")
+        if not start or not end:
+            return False
+        try:
+            from datetime import datetime
+            now = datetime.now().hour * 60 + datetime.now().minute
+            sh, sm = map(int, start.split(":"))
+            eh, em = map(int, end.split(":"))
+            s, e = sh * 60 + sm, eh * 60 + em
+        except Exception:
+            return False
+        if s <= e:
+            return s <= now < e
+        return now >= s or now < e   # 跨午夜
+
     def _run_loop(self) -> None:
         """主循环：检测消息 -> 合并缓冲 -> 限速回复。
 
         风控保护：
         - 同一联系人冷却期内多条消息合并为一次回复
-        - 每小时回复总数上限（滚动窗口）
+        - 每小时 / 每日回复总数上限（滚动窗口）
+        - 夜间静默时段不回复
         - 连续发送失败达到上限自动停机
+        - 微信断线自动重连并重建基线
         """
         wc = self.config.get("wechat", {})
         interval = wc.get("scan_interval", 5)
         contacts = wc.get("contacts", [])
         cooldown = wc.get("reply_cooldown_seconds", 10)
         hourly_cap = wc.get("max_replies_per_hour", 60)
+        daily_cap = wc.get("max_replies_per_day", 200)
         max_failures = wc.get("max_consecutive_failures", 3)
         input_mode = wc.get("input_mode", "typing")
 
         pending: dict[str, list[str]] = {}
         last_reply_at: dict[str, float] = {}
-        send_times: deque = deque()
+        send_times: deque = deque()       # 每小时窗口
+        day_times: deque = deque()        # 每日窗口
         failures = 0
+        reconnect_backoff = 5
 
-        log.info(f"开始监控 {len(contacts)} 个联系人（冷却{cooldown}s，每小时上限{hourly_cap}条）")
+        log.info(f"开始监控 {len(contacts)} 个联系人（冷却{cooldown}s，每小时上限{hourly_cap}条，每日上限{daily_cap}条）")
         if not contacts:
             log.warning("监控列表为空，请到「联系人」页添加；运行中新增会自动生效")
         self.detector.init_baseline(contacts)
 
         while self.running:
             try:
+                # 断线自愈：窗口消失 / UIA 失效时重连，重连后重建基线避免补回历史
+                if not self.detector.is_alive():
+                    log.warning(f"微信连接失效，{reconnect_backoff}s 后尝试重连...")
+                    for _ in range(reconnect_backoff * 2):
+                        if not self.running:
+                            break
+                        time.sleep(0.5)
+                    if not self.running:
+                        break
+                    self.detector.connected = False
+                    if self.detector.connect():
+                        contacts = self.config.get("wechat", {}).get("contacts", [])
+                        self.detector.init_baseline(contacts)
+                        reconnect_backoff = 5
+                        failures = 0
+                        log.info("重连成功，已重建消息基线")
+                    else:
+                        reconnect_backoff = min(reconnect_backoff * 2, 60)
+                    continue
+
                 # 每轮重读联系人列表，运行中新增/删除即时生效
                 contacts = self.config.get("wechat", {}).get("contacts", [])
                 new_msgs = self.detector.scan_contacts(contacts)
@@ -120,6 +167,20 @@ class WeChatBot:
                 now = time.time()
                 while send_times and now - send_times[0] > 3600:
                     send_times.popleft()
+                while day_times and now - day_times[0] > 86400:
+                    day_times.popleft()
+
+                # 夜间静默：不回复，清空缓冲避免静默结束后集中爆发
+                if self._in_quiet_hours(wc):
+                    if pending:
+                        log.info("夜间静默时段，丢弃待回复消息")
+                        pending.clear()
+                    wait = max(1.0, interval * random.uniform(0.8, 1.6))
+                    for _ in range(int(wait * 2)):
+                        if not self.running:
+                            break
+                        time.sleep(0.5)
+                    continue
 
                 for contact in list(pending.keys()):
                     if not self.running:
@@ -131,6 +192,10 @@ class WeChatBot:
                         continue
                     if len(send_times) >= hourly_cap:
                         log.warning("已达每小时回复上限，暂缓回复")
+                        break
+                    if len(day_times) >= daily_cap:
+                        log.warning("已达每日回复上限，今日不再回复")
+                        pending.clear()
                         break
 
                     merged = "\n".join(contents[-20:])
@@ -144,8 +209,9 @@ class WeChatBot:
                     if not self.running:
                         break
 
-                    # 模拟真人阅读思考后再回复
-                    time.sleep(random.uniform(1.5, 4.0))
+                    # 模拟真人阅读思考：延迟随回复长度增加，避免固定节奏
+                    think = random.uniform(1.5, 4.0) + min(len(reply) / 25.0, 6.0)
+                    time.sleep(think)
                     if not self.running:
                         break
 
@@ -154,6 +220,7 @@ class WeChatBot:
                         failures = 0
                         last_reply_at[contact] = time.time()
                         send_times.append(time.time())
+                        day_times.append(time.time())
                     else:
                         failures += 1
                         log.error(f"回复发送失败（连续 {failures} 次）")
