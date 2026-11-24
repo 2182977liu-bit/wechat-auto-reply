@@ -22,7 +22,11 @@ DEFAULT_CONFIG = {
         "window_title": "微信",
         "scan_interval": 5,  # 扫描间隔（秒）
         "contacts": [],  # 要监控的联系人列表
-        "reply_all": False  # 是否回复所有消息
+        "reply_all": False,  # 是否回复所有消息
+        "reply_cooldown_seconds": 10,  # 同一联系人两次回复的最小间隔（秒），冷却期内消息合并回复
+        "max_replies_per_hour": 60,  # 每小时回复总数上限（滚动窗口）
+        "max_consecutive_failures": 3,  # 连续发送失败达到该次数自动停机
+        "input_mode": "typing"  # 发送方式：typing=模拟真人逐字输入，paste=quick_send 默认发送
     },
     "ai": {
         "default_model": "deepseek",  # 默认AI模型

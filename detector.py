@@ -13,6 +13,7 @@ send_reply / scan_contacts / get_connection_status / disconnect。
 
 import os
 import time
+import random
 import logging
 import ctypes
 from pathlib import Path
@@ -223,16 +224,54 @@ class WeChatDetector:
 
     # ---- 发送 ----
 
-    def send_reply(self, contact: str, text: str) -> bool:
+    def _type_like_human(self, contact: str, text: str) -> bool:
+        """真人输入效果：打开会话 -> 聚焦输入框 -> 逐字键入（后端自带拟人节奏）-> 回车。
+        任一步失败返回 False，由调用方回退到 quick_send。"""
+        try:
+            from wechatauto.guia import (
+                WeChatGUI, WinInput, VK_A, VK_DELETE, VK_RETURN,
+            )
+            gui = WeChatGUI()
+            if not gui.ensure_visible():
+                return False
+            if not gui.open_chat(contact):
+                return False
+            time.sleep(0.6)
+            box = gui.get_input_box()
+            if not box or not gui.focus_input(box):
+                return False
+            inp = WinInput()
+            inp.key(VK_A, ctrl=True)   # 清空输入框残留
+            inp.key(VK_DELETE)
+            time.sleep(0.15)
+            # 换行替换为空格，避免提前触发发送
+            text = text.replace("\r", " ").replace("\n", " ").strip()
+            inp.type_unicode(text)     # SendInput 逐字键入，key_hold/type_gap 拟人节奏
+            time.sleep(random.uniform(0.3, 0.8))
+            inp.key(VK_RETURN)
+            time.sleep(0.8)
+            return True
+        except Exception as e:
+            log.warning(f"逐字输入失败: {e}")
+            return False
+
+    def send_reply(self, contact: str, text: str, input_mode: str = "typing") -> bool:
         if not self.connected or self.db is None:
             return False
         try:
             from wechatauto.guia import quick_send
             username = self._resolve(contact)
-            result = quick_send(text, username, verify=True)
-            if result is False:
-                log.error(f"发送失败 [{contact}]: 后端返回失败")
-                return False
+            sent = False
+            if input_mode == "typing":
+                sent = self._type_like_human(contact, text)
+                if not sent:
+                    log.warning("逐字输入不可用，回退到 quick_send")
+            if not sent:
+                result = quick_send(text, username, verify=True)
+                # WxResponse 以 is_success 判真假，不能只认 is False
+                if not result:
+                    log.error(f"发送失败 [{contact}]: 后端返回失败 {result}")
+                    return False
             log.info(f"已回复 [{contact}]: {text[:50]}...")
             return True
         except Exception as e:

@@ -5,9 +5,11 @@
 
 import sys
 import time
+import random
 import signal
 import logging
 import threading
+from collections import deque
 
 from config import load_config, LOG_PATH
 from detector import WeChatDetector
@@ -78,28 +80,87 @@ class WeChatBot:
         log.info("已停止")
 
     def _run_loop(self) -> None:
-        """主循环：检测消息 -> AI回复 -> 发送"""
-        interval = self.config.get("wechat", {}).get("scan_interval", 5)
-        contacts = self.config.get("wechat", {}).get("contacts", [])
+        """主循环：检测消息 -> 合并缓冲 -> 限速回复。
 
-        log.info(f"开始监控 {len(contacts)} 个联系人")
+        风控保护：
+        - 同一联系人冷却期内多条消息合并为一次回复
+        - 每小时回复总数上限（滚动窗口）
+        - 连续发送失败达到上限自动停机
+        """
+        wc = self.config.get("wechat", {})
+        interval = wc.get("scan_interval", 5)
+        contacts = wc.get("contacts", [])
+        cooldown = wc.get("reply_cooldown_seconds", 10)
+        hourly_cap = wc.get("max_replies_per_hour", 60)
+        max_failures = wc.get("max_consecutive_failures", 3)
+        input_mode = wc.get("input_mode", "typing")
 
+        pending: dict[str, list[str]] = {}
+        last_reply_at: dict[str, float] = {}
+        send_times: deque = deque()
+        failures = 0
+
+        log.info(f"开始监控 {len(contacts)} 个联系人（冷却{cooldown}s，每小时上限{hourly_cap}条）")
         self.detector.init_baseline(contacts)
 
         while self.running:
             try:
                 new_msgs = self.detector.scan_contacts(contacts)
-
                 for contact, msgs in new_msgs.items():
+                    for msg in msgs:
+                        if not msg.processed:
+                            pending.setdefault(contact, []).append(msg.content)
+                            msg.processed = True
+
+                now = time.time()
+                while send_times and now - send_times[0] > 3600:
+                    send_times.popleft()
+
+                for contact in list(pending.keys()):
                     if not self.running:
                         break
-                    for msg in msgs:
-                        if not self.running:
+                    contents = pending.get(contact) or []
+                    if not contents:
+                        continue
+                    if now - last_reply_at.get(contact, 0) < cooldown:
+                        continue
+                    if len(send_times) >= hourly_cap:
+                        log.warning("已达每小时回复上限，暂缓回复")
+                        break
+
+                    merged = "\n".join(contents[-20:])
+                    pending[contact] = []
+                    log.info(f"收到 [{contact}] 的 {len(contents)} 条消息，合并处理")
+
+                    reply = self.replier.generate(merged, contact=contact)
+                    if not reply:
+                        log.warning("AI未能生成回复")
+                        continue
+                    if not self.running:
+                        break
+
+                    # 模拟真人阅读思考后再回复
+                    time.sleep(random.uniform(1.5, 4.0))
+                    if not self.running:
+                        break
+
+                    success = self.detector.send_reply(contact, reply, input_mode=input_mode)
+                    if success:
+                        failures = 0
+                        last_reply_at[contact] = time.time()
+                        send_times.append(time.time())
+                    else:
+                        failures += 1
+                        log.error(f"回复发送失败（连续 {failures} 次）")
+                        if failures >= max_failures:
+                            log.error("连续失败达到上限，自动停机保护")
+                            self.stop()
                             break
-                        if msg.processed:
-                            continue
-                        self._handle_message(contact, msg)
-                        msg.processed = True
+
+                # 防止缓冲无限增长
+                for c in pending:
+                    if len(pending[c]) > 20:
+                        pending[c] = pending[c][-20:]
 
                 for _ in range(int(interval * 2)):
                     if not self.running:
@@ -111,25 +172,6 @@ class WeChatBot:
             except Exception as e:
                 log.error(f"主循环异常: {e}")
                 time.sleep(1)
-
-    def _handle_message(self, contact: str, msg) -> None:
-        """处理单条消息：AI生成回复 -> 发送"""
-        if not self.running:
-            return
-        log.info(f"收到 [{contact}] 的消息: {msg.content}")
-
-        reply = self.replier.generate(msg.content, contact=contact)
-        if not reply:
-            log.warning("AI未能生成回复")
-            return
-
-        if not self.running:
-            return
-        success = self.detector.send_reply(contact, reply)
-        if success:
-            log.info(f"已回复 [{contact}]: {reply[:50]}...")
-        else:
-            log.error("回复发送失败")
 
     def get_status(self) -> dict:
         """获取系统状态"""
