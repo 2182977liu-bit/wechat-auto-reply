@@ -18,6 +18,11 @@
                 <i class="bi bi-search"></i> 搜索
             </button>
         </form>
+        <div class="d-flex gap-2 mb-2" id="wx-tabs" style="display: none;">
+            <button class="pixel-btn pixel-btn-blue pixel-btn-sm" id="tab-all" onclick="renderWx('all')">全部</button>
+            <button class="pixel-btn pixel-btn-sm" id="tab-person" onclick="renderWx('person')"><i class="bi bi-person"></i> 个人</button>
+            <button class="pixel-btn pixel-btn-sm" id="tab-group" onclick="renderWx('group')"><i class="bi bi-people"></i> 群组</button>
+        </div>
         <div id="wx-result" class="text-gray text-sm" style="padding: 8px 4px;">
             点击「读取会话列表」显示最近会话，或输入关键词搜索全部联系人。点选即可加入监控。
         </div>
@@ -90,6 +95,9 @@ document.getElementById('add-form').addEventListener('submit', e => {
     if (name) addContact(name);
 });
 
+let wxCache = [];
+let wxFilter = 'all';
+
 async function loadWechatContacts(q = '') {
     const box = document.getElementById('wx-result');
     box.innerHTML = '<span class="text-gray">读取中...</span>';
@@ -98,15 +106,31 @@ async function loadWechatContacts(q = '') {
         box.innerHTML = `<span class="text-red">${d.error || '读取失败'}</span>`;
         return;
     }
-    if (!d.contacts || d.contacts.length === 0) {
-        box.innerHTML = '<span class="text-gray">没有匹配的结果</span>';
+    wxCache = d.contacts || [];
+    document.getElementById('wx-tabs').style.display = 'flex';
+    renderWx(wxFilter);
+}
+
+function renderWx(filter) {
+    wxFilter = filter;
+    const box = document.getElementById('wx-result');
+    // 标签选中态
+    ['all', 'person', 'group'].forEach(f => {
+        document.getElementById('tab-' + f).classList.toggle('pixel-btn-blue', f === filter);
+    });
+    const list = wxCache.filter(c =>
+        filter === 'all' || (filter === 'group' ? c.is_group : !c.is_group)
+    );
+    if (list.length === 0) {
+        box.innerHTML = '<span class="text-gray">该分类下没有结果</span>';
         return;
     }
-    box.innerHTML = d.contacts.map(c => `
+    box.innerHTML = list.map(c => `
         <div class="pixel-list-item" style="border-radius: 8px;">
             <div class="d-flex align-center gap-2">
-                <i class="bi bi-person text-blue"></i>
+                <i class="bi ${c.is_group ? 'bi-people text-purple' : 'bi-person text-blue'}"></i>
                 <span>${escapeHtml(c.name)}</span>
+                ${c.is_group ? '<span class="pixel-badge pixel-badge-purple">群</span>' : ''}
                 ${c.summary ? `<span class="text-gray text-xs">${escapeHtml(c.summary)}</span>` : ''}
             </div>
             ${c.monitored

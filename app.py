@@ -86,7 +86,11 @@ def create_app(bot) -> Flask:
                     username = r.get("username") or ""
                     name = r.get("remark") or r.get("nick_name") or username
                     if username:
-                        items.append({"name": name, "username": username})
+                        items.append({
+                            "name": name,
+                            "username": username,
+                            "is_group": username.endswith("@chatroom"),
+                        })
             else:
                 sessions = det.db.get_sessions(limit=100) or []
                 for s in sessions:
@@ -101,6 +105,7 @@ def create_app(bot) -> Flask:
                         "name": name,
                         "username": username,
                         "summary": (s.get("summary") or "")[:30],
+                        "is_group": username.endswith("@chatroom"),
                     })
             monitored = set(bot.config.get("wechat", {}).get("contacts", []))
             for it in items:

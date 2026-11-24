@@ -829,6 +829,7 @@
                         <i class="bi bi-info-circle"></i> 通用智能体接入说明
                     </div>
                     <div class="info-box-content">
+                        <strong>工作原理</strong> - 微信收到消息 → 本程序把消息文字 POST 到你的智能体接口 → 接口返回回复文字 → 本程序在微信中发送。密钥仅用于接口鉴权，智能体本身仍在平台云端运行<br>
                         <strong>OpenAI 兼容协议</strong> - 适合豆包（火山方舟）等标准接口，填 Base URL + API Key + 模型/接入点 ID 即可<br>
                         <strong>通用 Webhook</strong> - 适合自己做的智能体：系统会向你的地址 POST JSON
                         <code>{"message": "用户消息", "contact": "联系人", "history": [...]}</code>，
