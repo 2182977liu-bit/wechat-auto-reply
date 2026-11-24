@@ -18,12 +18,13 @@ DEFAULT_SYSTEM_PROMPT = (
 
 class AIReplier:
 
-    def __init__(self, config: dict, memory=None) -> None:
+    def __init__(self, config: dict, memory=None, knowledge=None) -> None:
         self.config = config
         self.default_model = config.get("default_model", "deepseek")
         self.clients: dict[str, OpenAI] = {}
         self.system_prompt = config.get("system_prompt", DEFAULT_SYSTEM_PROMPT)
         self.memory = memory
+        self.knowledge = knowledge
         self._init_clients()
 
     def _init_clients(self) -> None:
@@ -50,6 +51,26 @@ class AIReplier:
         model_id = model_cfg.get("model", "")
 
         messages = [{"role": "system", "content": self.system_prompt}]
+
+        # 知识库 RAG：检索相关片段注入提示词
+        if self.knowledge:
+            try:
+                hits = self.knowledge.search(message)
+            except Exception as e:
+                log.warning(f"知识库检索失败: {e}")
+                hits = []
+            if hits:
+                ref = "\n\n".join(
+                    f"[{h['source']}] {h['text']}" for h in hits
+                )
+                messages.append({
+                    "role": "system",
+                    "content": (
+                        "以下是知识库参考资料。若资料与问题相关，请优先依据资料回答；"
+                        "资料未覆盖时再按常识回答，不要编造资料中没有的事实。\n\n"
+                        + ref
+                    ),
+                })
 
         if self.memory:
             self.memory.add_message(contact, "user", message)
@@ -79,10 +100,6 @@ class AIReplier:
         except Exception as e:
             log.error(f"AI调用失败 [{name}]: {e}")
             return None
-
-    def clear_history(self, contact: str = None) -> None:
-        if self.memory and contact:
-            self.memory.clear_contact(contact)
 
     def test_model(self, model_name: str = None) -> bool:
         name = model_name or self.default_model

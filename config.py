@@ -4,7 +4,6 @@
 """
 
 import json
-import os
 from pathlib import Path
 
 # 项目根目录
@@ -19,14 +18,11 @@ LOG_PATH = ROOT / "logs" / "wechat.log"
 # 默认配置
 DEFAULT_CONFIG = {
     "wechat": {
+        "backend": "wechatauto-replica",  # 开源逆向后端（读库解密+UIA/OCR发送）
         "window_title": "微信",
         "scan_interval": 5,  # 扫描间隔（秒）
         "contacts": [],  # 要监控的联系人列表
-        "reply_all": False,  # 是否回复所有消息
-        "reply_cooldown_seconds": 10,  # 同一联系人两次回复的最小间隔（秒），冷却期内消息合并回复
-        "max_replies_per_hour": 60,  # 每小时回复总数上限（滚动窗口）
-        "max_consecutive_failures": 3,  # 连续发送失败达到该次数自动停机
-        "input_mode": "typing"  # 发送方式：typing=模拟真人逐字输入，paste=粘贴发送
+        "reply_all": False  # 是否回复所有消息
     },
     "ai": {
         "default_model": "deepseek",  # 默认AI模型
@@ -51,6 +47,12 @@ DEFAULT_CONFIG = {
         },
         "agents": {}  # 智能体配置
     },
+    "knowledge": {
+        "enabled": True,   # 是否启用知识库 RAG
+        "dir": "knowledge",  # 知识库目录（.md / .txt）
+        "top_k": 3,        # 每次注入的最相关片段数
+        "chunk_size": 400  # 切块长度（字符）
+    },
     "server": {
         "host": "0.0.0.0",
         "port": 5000
@@ -72,13 +74,6 @@ def save_config(config: dict, path: Path = CONFIG_PATH) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(config, f, ensure_ascii=False, indent=2)
-
-
-def get_ai_config(config: dict, model_name: str = None) -> dict:
-    """获取指定AI模型的配置"""
-    ai = config.get("ai", {})
-    name = model_name or ai.get("default_model", "deepseek")
-    return ai.get("models", {}).get(name, {})
 
 
 def add_contact(config: dict, name: str) -> bool:

@@ -5,23 +5,12 @@
 
 import sqlite3
 import logging
-import json
 from pathlib import Path
-from datetime import datetime
 from threading import Lock
-from dataclasses import dataclass
 
 log = logging.getLogger(__name__)
 
 DB_PATH = Path(__file__).parent / "data" / "memory.db"
-
-
-@dataclass
-class MemoryEntry:
-    contact: str
-    role: str
-    content: str
-    created_at: str
 
 
 class ContactMemory:
@@ -117,17 +106,6 @@ class ContactMemory:
                 }
                 for r in rows
             ]
-
-    def get_contact_count(self, contact: str) -> int:
-        with self._lock:
-            conn = sqlite3.connect(self._db_path)
-            cursor = conn.execute(
-                "SELECT message_count FROM contact_profiles WHERE contact = ?",
-                (contact,)
-            )
-            row = cursor.fetchone()
-            conn.close()
-            return row[0] if row else 0
 
     def update_notes(self, contact: str, notes: str) -> None:
         with self._lock:
