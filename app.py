@@ -84,11 +84,15 @@ def create_app(bot) -> Flask:
                 rows = det.db.search_contact(q) or []
                 for r in rows:
                     username = r.get("username") or ""
-                    name = r.get("remark") or r.get("nick_name") or username
+                    nick = r.get("nick_name") or ""
+                    remark = r.get("remark") or ""
+                    name = remark or nick or username
                     if username:
                         items.append({
                             "name": name,
                             "username": username,
+                            "nickname": nick,
+                            "remark": remark,
                             "is_group": username.endswith("@chatroom"),
                         })
             else:
@@ -97,13 +101,27 @@ def create_app(bot) -> Flask:
                     username = s.get("username") or ""
                     if not username:
                         continue
+                    nick, remark = "", ""
                     try:
-                        name = det.db.get_nickname(username) or username
+                        # 精确反查昵称与备注，便于前端展示「备注（昵称）」
+                        for r in det.db.search_contact(username) or []:
+                            if r.get("username") == username:
+                                nick = r.get("nick_name") or ""
+                                remark = r.get("remark") or ""
+                                break
                     except Exception:
-                        name = username
+                        pass
+                    if not nick and not remark:
+                        try:
+                            nick = det.db.get_nickname(username) or username
+                        except Exception:
+                            nick = username
+                    name = remark or nick or username
                     items.append({
                         "name": name,
                         "username": username,
+                        "nickname": nick,
+                        "remark": remark,
                         "summary": (s.get("summary") or "")[:30],
                         "is_group": username.endswith("@chatroom"),
                     })

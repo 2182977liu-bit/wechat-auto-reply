@@ -125,11 +125,16 @@ function renderWx(filter) {
         box.innerHTML = '<span class="text-gray">该分类下没有结果</span>';
         return;
     }
-    box.innerHTML = list.map(c => `
+    box.innerHTML = list.map(c => {
+        // 个人：有备注且与昵称不同时显示「备注（昵称）」；群聊只显示群名
+        const display = (!c.is_group && c.remark && c.nickname && c.remark !== c.nickname)
+            ? `${escapeHtml(c.remark)} <span class="text-gray text-xs">（${escapeHtml(c.nickname)}）</span>`
+            : escapeHtml(c.name);
+        return `
         <div class="pixel-list-item" style="border-radius: 8px;">
             <div class="d-flex align-center gap-2">
                 <i class="bi ${c.is_group ? 'bi-people text-purple' : 'bi-person text-blue'}"></i>
-                <span>${escapeHtml(c.name)}</span>
+                <span>${display}</span>
                 ${c.is_group ? '<span class="pixel-badge pixel-badge-purple">群</span>' : ''}
                 ${c.summary ? `<span class="text-gray text-xs">${escapeHtml(c.summary)}</span>` : ''}
             </div>
@@ -137,7 +142,8 @@ function renderWx(filter) {
                 ? '<span class="pixel-badge pixel-badge-green">已监控</span>'
                 : `<button class="pixel-btn pixel-btn-green pixel-btn-sm" onclick="addContact('${escapeAttr(c.name)}')"><i class="bi bi-plus"></i> 监控</button>`}
         </div>
-    `).join('');
+    `;
+    }).join('');
 }
 
 function escapeHtml(s) {
