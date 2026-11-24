@@ -161,6 +161,33 @@ def create_app(bot) -> Flask:
             return jsonify({"msg": "测试成功"})
         return jsonify({"error": "测试失败"}), 500
 
+    @app.route("/api/ai-config/fetch-models", methods=["POST"])
+    def api_fetch_models():
+        """用填写的 Key + Base URL 调 /models 拉取可用模型列表"""
+        data = request.get_json() or {}
+        key = (data.get("api_key") or "").strip()
+        base = (data.get("base_url") or "").strip().rstrip("/")
+        if not base:
+            return jsonify({"error": "请先填写 Base URL"}), 400
+        try:
+            import httpx
+            headers = {"Authorization": f"Bearer {key}"} if key else {}
+            resp = httpx.get(base + "/models", headers=headers, timeout=15)
+            resp.raise_for_status()
+            payload = resp.json()
+            rows = payload.get("data") or payload.get("models") or []
+            ids = []
+            for r in rows:
+                mid = r.get("id") if isinstance(r, dict) else r
+                if mid:
+                    ids.append(str(mid))
+            ids = sorted(set(ids))
+            if not ids:
+                return jsonify({"error": "接口未返回模型列表，可手动输入模型名"}), 502
+            return jsonify({"models": ids})
+        except Exception as e:
+            return jsonify({"error": f"拉取失败: {e}，可手动输入模型名"}), 502
+
     @app.route("/api/ai-config/reply-mode", methods=["POST"])
     def api_reply_mode():
         data = request.get_json()

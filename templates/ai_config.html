@@ -739,7 +739,13 @@
                         </div>
                         <div class="form-group">
                             <label class="form-label">模型名称</label>
-                            <input type="text" class="form-input" id="{{ name }}-model" value="{{ cfg.model }}" placeholder="输入模型名称">
+                            <div style="display: flex; gap: 8px;">
+                                <input type="text" class="form-input" id="{{ name }}-model" list="{{ name }}-model-list" value="{{ cfg.model }}" placeholder="拉取后点选，或手动输入" style="flex: 1;">
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="fetchModels('{{ name }}')" title="拉取模型列表">
+                                    <i class="bi bi-cloud-download"></i>
+                                </button>
+                            </div>
+                            <datalist id="{{ name }}-model-list"></datalist>
                         </div>
                         <button class="btn btn-primary btn-sm" style="width: 100%;" onclick="saveModel('{{ name }}')">
                             <i class="bi bi-save"></i> 保存配置
@@ -759,17 +765,22 @@
                         <div class="preset-item" onclick="selectPreset('qianwen')">
                             <div class="preset-icon">☁️</div>
                             <div class="preset-name">通义千问</div>
-                            <div class="preset-desc">阿里云 - 多模态支持</div>
+                            <div class="preset-desc">阿里云百炼</div>
                         </div>
-                        <div class="preset-item" onclick="selectPreset('xiaomi')">
-                            <div class="preset-icon">📱</div>
-                            <div class="preset-name">小米 MiMo</div>
-                            <div class="preset-desc">小米 - 国产大模型</div>
+                        <div class="preset-item" onclick="selectPreset('doubao')">
+                            <div class="preset-icon">🤖</div>
+                            <div class="preset-name">豆包</div>
+                            <div class="preset-desc">火山方舟 - 填接入点 ep-xxx</div>
                         </div>
                         <div class="preset-item" onclick="selectPreset('zhipu')">
                             <div class="preset-icon">🧠</div>
                             <div class="preset-name">智谱 GLM</div>
-                            <div class="preset-desc">智谱AI - 清华技术</div>
+                            <div class="preset-desc">智谱AI</div>
+                        </div>
+                        <div class="preset-item" onclick="selectPreset('kimi')">
+                            <div class="preset-icon">🌙</div>
+                            <div class="preset-name">Kimi</div>
+                            <div class="preset-desc">月之暗面</div>
                         </div>
                     </div>
                 </div>
@@ -883,7 +894,13 @@
             </div>
             <div class="form-group">
                 <label class="form-label">模型 ID</label>
-                <input type="text" class="form-input" id="new-model-id" placeholder="例如：gpt-3.5-turbo">
+                <div style="display: flex; gap: 8px;">
+                    <input type="text" class="form-input" id="new-model-id" list="new-model-list" placeholder="拉取后点选，或手动输入" style="flex: 1;">
+                    <button type="button" class="btn btn-secondary" onclick="fetchModels('new')" title="用上方 Key 和地址拉取模型列表">
+                        <i class="bi bi-cloud-download"></i> 拉取模型
+                    </button>
+                </div>
+                <datalist id="new-model-list"></datalist>
             </div>
         </div>
         <div class="modal-footer">
@@ -1099,6 +1116,26 @@ async function saveModel(name) {
     }
 }
 
+// 拉取模型列表（scope='new' 为添加弹窗，否则为对应模型卡片）
+async function fetchModels(scope) {
+    const isNew = scope === 'new';
+    const key = document.getElementById(isNew ? 'new-model-key' : scope + '-key').value.trim();
+    const url = document.getElementById(isNew ? 'new-model-url' : scope + '-url').value.trim();
+    const list = document.getElementById(isNew ? 'new-model-list' : scope + '-model-list');
+    if (!url) { showAlert('请先填写 Base URL', 'warning'); return; }
+    showAlert('正在拉取模型列表...', 'info');
+    const d = await api('/api/ai-config/fetch-models', {
+        method: 'POST',
+        body: JSON.stringify({api_key: key, base_url: url})
+    });
+    if (d._ok && d.models && d.models.length) {
+        list.innerHTML = d.models.map(m => `<option value="${m}">`).join('');
+        showAlert(`拉取到 ${d.models.length} 个模型，点击模型输入框即可选择`, 'success');
+    } else {
+        showAlert(d.error || '拉取失败，可手动输入模型名', 'error');
+    }
+}
+
 // 测试模型
 async function testModel(name) {
     showAlert('正在测试连接...', 'info');
@@ -1135,9 +1172,10 @@ async function deleteModel(name) {
 function selectPreset(preset) {
     const presets = {
         deepseek: {name: 'deepseek', url: 'https://api.deepseek.com/v1', model: 'deepseek-chat'},
-        qianwen: {name: 'qianwen', url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-turbo'},
-        xiaomi: {name: 'xiaomi', url: 'https://token-plan-cn.xiaomimimo.com/v1', model: 'MiMo-V2.5'},
-        zhipu: {name: 'zhipu', url: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4-flash'}
+        qianwen: {name: 'qianwen', url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus'},
+        doubao: {name: 'doubao', url: 'https://ark.cn-beijing.volces.com/api/v3', model: ''},
+        zhipu: {name: 'zhipu', url: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4-flash'},
+        kimi: {name: 'kimi', url: 'https://api.moonshot.cn/v1', model: ''}
     };
     
     const p = presets[preset];
