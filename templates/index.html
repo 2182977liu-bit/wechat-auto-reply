@@ -9,20 +9,14 @@
         <strong>微信未连接</strong>
     </div>
     <p class="mb-2" style="white-space: pre-line;">{{ status.last_error or '未知错误' }}</p>
-    {% if '主窗口' in (status.last_error or '') or '登录' in (status.last_error or '') or '目录' in (status.last_error or '') %}
+    {% if '主窗口' in (status.last_error or '') or '登录' in (status.last_error or '') or '窗口' in (status.last_error or '') %}
     <div class="mt-2" style="font-size: 16px;">
-        <strong>可能原因：微信未登录或权限不足</strong><br>
-        后端 wechatauto-replica 通过本地数据库解密读消息，需要微信已登录且本程序以管理员权限运行<br><br>
+        <strong>可能原因：微信未登录（停在扫码界面不算登录）</strong><br>
+        本程序采用纯 UI 自动化读消息，需要微信已登录且主窗口存在，<b>无需管理员权限</b><br><br>
         <strong>解决方法：</strong><br>
-        1. 打开微信客户端并登录（支持 4.2.0.53）<br>
-        2. 以管理员身份运行本程序<br>
-        3. 重新登录后刷新此页面
-    </div>
-    {% elif '权限' in (status.last_error or '') %}
-    <div class="mt-2" style="font-size: 16px;">
-        <strong>解决方法：</strong><br>
-        1. 右键点击 <code>run_as_admin.bat</code> → 以管理员身份运行<br>
-        2. 或者运行 <code>fix_permissions.bat</code> 修复权限后重新启动
+        1. 打开微信客户端并完成登录（进入主界面）<br>
+        2. 保持微信窗口在桌面可见<br>
+        3. 点击"启动"或刷新此页面
     </div>
     {% endif %}
 </div>
@@ -75,10 +69,10 @@
     <div class="pixel-card-body">
         <div class="pixel-grid pixel-grid-2 mb-4">
             <div class="info-box" style="border-color: var(--accent-green);">
-                <div class="info-title text-green">wechatauto-replica（开源）</div>
-                支持微信：4.1.12+（已验证 4.2.0.53）<br>
-                读消息：本地 SQLCipher 数据库解密<br>
-                发送：UIA 热激活 + 坐标/OCR 回退<br>
+                <div class="info-title text-green">wechatauto-replica（纯 UIA）</div>
+                支持微信：4.x（需已登录）<br>
+                读消息：UIA 控件树（不读内存、不解密数据库）<br>
+                发送：模拟逐字输入 + UIA 回读确认<br>
                 安装：pip install wechatauto-replica==1.3.0.1
                 <div class="mt-2">
                     <a href="https://github.com/fanyuantaier/wechatauto-replica" target="_blank" class="pixel-btn pixel-btn-green pixel-btn-sm">
@@ -98,9 +92,9 @@
         <div class="info-box">
             <div class="info-title text-blue"><i class="bi bi-lightning"></i> 快速解决步骤</div>
             <ol>
-                <li>打开微信客户端并登录（4.2.0.53 可用）</li>
-                <li>以管理员身份运行本程序（读进程内存需要）</li>
-                <li>确保微信窗口显示在桌面上（发送需要）</li>
+                <li>打开微信客户端并完成登录（进入主界面）</li>
+                <li>无需管理员权限，直接运行本程序</li>
+                <li>确保微信窗口显示在桌面上（收发需要，运行时勿手动操作微信）</li>
                 <li>在 knowledge/ 放入资料文档以启用知识库</li>
                 <li>点击"刷新"按钮</li>
             </ol>
