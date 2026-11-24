@@ -91,6 +91,10 @@ class WeChatDetector:
             log.error(self.last_error)
             return False
 
+        # wechatauto 导入时会清空 root handlers，恢复文件日志
+        from config import ensure_logging
+        ensure_logging()
+
         for attempt in range(1, MAX_RETRIES + 1):
             log.info(f"尝试连接微信 ({attempt}/{MAX_RETRIES})...")
             if not self._check_wechat_window():

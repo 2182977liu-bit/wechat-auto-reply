@@ -29,6 +29,11 @@ class AIReplier:
         self.knowledge = knowledge
         self._init_clients()
 
+    def reload_models(self) -> None:
+        """配置变更后重建客户端（Web 保存密钥后无需重启）"""
+        self.clients = {}
+        self._init_clients()
+
     def _init_clients(self) -> None:
         models = self.config.get("models", {})
         for name, cfg in models.items():

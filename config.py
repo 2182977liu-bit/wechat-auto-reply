@@ -4,6 +4,7 @@
 """
 
 import json
+import logging
 from pathlib import Path
 
 # 项目根目录
@@ -14,6 +15,27 @@ CONFIG_PATH = ROOT / "config.json"
 
 # 默认日志路径
 LOG_PATH = ROOT / "logs" / "wechat.log"
+
+
+def ensure_logging() -> None:
+    """恢复我们的文件日志。
+
+    wechatauto 在导入时会清空 root logger 的全部 handlers（logger.py），
+    导致 logs/wechat.log 和 Web 日志页断流。每次导入 wechatauto 后调用本函数，
+    把文件处理器补回来（幂等，不会重复添加）。
+    """
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+    target = str(LOG_PATH.resolve())
+    for h in root.handlers:
+        if isinstance(h, logging.FileHandler) and getattr(h, "baseFilename", "") == target:
+            return
+    LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    fh = logging.FileHandler(LOG_PATH, encoding="utf-8")
+    fh.setFormatter(logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+    ))
+    root.addHandler(fh)
 
 # 默认配置
 DEFAULT_CONFIG = {

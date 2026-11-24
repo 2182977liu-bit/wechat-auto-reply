@@ -143,6 +143,7 @@ def create_app(bot) -> Flask:
         models = bot.config.setdefault("ai", {}).setdefault("models", {})
         models.setdefault(model, {}).update(data)
         save_config(bot.config)
+        bot.replier.reload_models()   # 保存后立即生效，无需重启
         return jsonify({"msg": f"已更新 {model}"})
 
     @app.route("/api/ai-config/default", methods=["POST"])
@@ -211,6 +212,7 @@ def create_app(bot) -> Flask:
             "model": data.get("model", "")
         }
         save_config(bot.config)
+        bot.replier.reload_models()
         return jsonify({"msg": f"已添加 {name}"})
 
     @app.route("/api/ai-config/<model>", methods=["DELETE"])
@@ -219,6 +221,7 @@ def create_app(bot) -> Flask:
         if model in models:
             del models[model]
             save_config(bot.config)
+            bot.replier.reload_models()
             return jsonify({"msg": f"已删除 {model}"})
         return jsonify({"error": "模型不存在"}), 404
 
