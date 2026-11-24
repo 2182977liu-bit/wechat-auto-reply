@@ -9,15 +9,14 @@
         <strong>微信未连接</strong>
     </div>
     <p class="mb-2" style="white-space: pre-line;">{{ status.last_error or '未知错误' }}</p>
-    {% if '主窗口' in (status.last_error or '') or '登录' in (status.last_error or '') %}
+    {% if '主窗口' in (status.last_error or '') or '登录' in (status.last_error or '') or '目录' in (status.last_error or '') %}
     <div class="mt-2" style="font-size: 16px;">
-        <strong>可能原因：微信版本过高</strong><br>
-        wxauto4 免费版仅支持到 4.1.8.107<br><br>
+        <strong>可能原因：微信未登录或权限不足</strong><br>
+        后端 wechatauto-replica 通过本地数据库解密读消息，需要微信已登录且本程序以管理员权限运行<br><br>
         <strong>解决方法：</strong><br>
-        1. 关闭微信<br>
-        2. 运行 <code>download_wechat.bat</code> 下载兼容版本<br>
-        3. 覆盖安装（不会丢失聊天记录）<br>
-        4. 重新登录微信后刷新此页面
+        1. 打开微信客户端并登录（支持 4.2.0.53）<br>
+        2. 以管理员身份运行本程序<br>
+        3. 重新登录后刷新此页面
     </div>
     {% elif '权限' in (status.last_error or '') %}
     <div class="mt-2" style="font-size: 16px;">
@@ -76,36 +75,33 @@
     <div class="pixel-card-body">
         <div class="pixel-grid pixel-grid-2 mb-4">
             <div class="info-box" style="border-color: var(--accent-green);">
-                <div class="info-title text-green">wxauto4 免费版</div>
-                支持微信：最高 4.1.8.107<br>
-                Python：3.9-3.12<br>
-                安装：pip install wxauto4
+                <div class="info-title text-green">wechatauto-replica（开源）</div>
+                支持微信：4.1.12+（已验证 4.2.0.53）<br>
+                读消息：本地 SQLCipher 数据库解密<br>
+                发送：UIA 热激活 + 坐标/OCR 回退<br>
+                安装：pip install wechatauto-replica==1.3.0.1
                 <div class="mt-2">
-                    <a href="https://github.com/SiverKing/wechat4.0-windows-versions/releases/tag/v4.1.8.107" target="_blank" class="pixel-btn pixel-btn-green pixel-btn-sm">
-                        <i class="bi bi-download"></i> 下载微信
+                    <a href="https://github.com/fanyuantaier/wechatauto-replica" target="_blank" class="pixel-btn pixel-btn-green pixel-btn-sm">
+                        <i class="bi bi-github"></i> 开源仓库
                     </a>
                 </div>
             </div>
-            <div class="info-box" style="border-color: var(--accent-yellow);">
-                <div class="info-title text-yellow">wxautox4 Plus版</div>
-                支持微信：最高 4.1.9.35<br>
-                Python：3.9-3.13<br>
-                安装：pip install wxautox4
-                <div class="mt-2">
-                    <a href="https://github.com/SiverKing/wechat4.0-windows-versions/releases/tag/v4.1.9.35" target="_blank" class="pixel-btn pixel-btn-yellow pixel-btn-sm">
-                        <i class="bi bi-download"></i> 下载微信
-                    </a>
-                </div>
+            <div class="info-box" style="border-color: var(--accent-blue);">
+                <div class="info-title text-blue">知识库 RAG</div>
+                目录：knowledge/（.md / .txt）<br>
+                检索：本地 BM25，离线可用<br>
+                回复前自动注入最相关片段<br>
+                配置：config.json → knowledge
             </div>
         </div>
         <hr class="pixel-divider">
         <div class="info-box">
             <div class="info-title text-blue"><i class="bi bi-lightning"></i> 快速解决步骤</div>
             <ol>
-                <li>检查微信版本（设置 → 关于微信）</li>
-                <li>如果版本过高，下载上面的兼容版本</li>
-                <li>打开微信客户端并登录</li>
-                <li>确保微信窗口显示在桌面上</li>
+                <li>打开微信客户端并登录（4.2.0.53 可用）</li>
+                <li>以管理员身份运行本程序（读进程内存需要）</li>
+                <li>确保微信窗口显示在桌面上（发送需要）</li>
+                <li>在 knowledge/ 放入资料文档以启用知识库</li>
                 <li>点击"刷新"按钮</li>
             </ol>
         </div>
