@@ -13,6 +13,7 @@ from collections import deque
 
 from config import load_config, LOG_PATH
 from detector import WeChatDetector
+from dispatcher import parse_reply, resolve_media
 from replier import AIReplier
 from memory import ContactMemory
 from knowledge import KnowledgeBase
@@ -144,7 +145,7 @@ class WeChatBot:
                     if not self.running:
                         break
 
-                    success = self.detector.send_reply(contact, reply, input_mode=input_mode)
+                    success = self._send_segments(contact, reply, input_mode)
                     if success:
                         failures = 0
                         last_reply_at[contact] = time.time()
@@ -172,6 +173,37 @@ class WeChatBot:
             except Exception as e:
                 log.error(f"主循环异常: {e}")
                 time.sleep(1)
+
+    def _send_segments(self, contact: str, reply: str, input_mode: str) -> bool:
+        """把 AI 回复拆成文本/图片/文件/表情包片段依次发送，段间随机间隔。
+        素材缺失只跳过该片段并记日志；实际发送失败才返回 False（计入熔断）。"""
+        segments = parse_reply(reply)
+        if not segments:
+            log.warning("回复内容为空")
+            return False
+        first = True
+        for seg in segments:
+            if not self.running:
+                return False
+            if not first:
+                # 多段发送保持拟人间隔，避免媒体连发
+                time.sleep(random.uniform(1.0, 3.0))
+            first = False
+            if seg.kind == "text":
+                if not self.detector.send_reply(contact, seg.value, input_mode=input_mode):
+                    return False
+            else:
+                path = resolve_media(seg.kind, seg.value)
+                if path is None:
+                    log.warning(f"找不到{seg.kind}素材 [{seg.value}]，跳过该片段")
+                    continue
+                if seg.kind == "file":
+                    ok = self.detector.send_file(contact, path)
+                else:
+                    ok = self.detector.send_image(contact, path)
+                if not ok:
+                    return False
+        return True
 
     def get_status(self) -> dict:
         """获取系统状态"""

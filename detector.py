@@ -224,6 +224,18 @@ class WeChatDetector:
 
     # ---- 发送 ----
 
+    @staticmethod
+    def _type_text(inp, text: str) -> None:
+        """逐字键入；非 BMP 字符（如 emoji）拆成 UTF-16 代理对，避免 wScan 截断"""
+        for ch in text:
+            code = ord(ch)
+            if code > 0xFFFF:
+                code -= 0x10000
+                inp.type_unicode(chr(0xD800 + (code >> 10)))
+                inp.type_unicode(chr(0xDC00 + (code & 0x3FF)))
+            else:
+                inp.type_unicode(ch)
+
     def _type_like_human(self, contact: str, text: str) -> bool:
         """真人输入效果：打开会话 -> 聚焦输入框 -> 逐字键入（后端自带拟人节奏）-> 回车。
         任一步失败返回 False，由调用方回退到 quick_send。"""
@@ -246,7 +258,9 @@ class WeChatDetector:
             time.sleep(0.15)
             # 换行替换为空格，避免提前触发发送
             text = text.replace("\r", " ").replace("\n", " ").strip()
-            inp.type_unicode(text)     # SendInput 逐字键入，key_hold/type_gap 拟人节奏
+            # SendInput 逐字键入，key_hold/type_gap 拟人节奏；
+            # 文本中的微信表情短代码（[呲牙] 等）原样键入，客户端自动渲染
+            self._type_text(inp, text)
             time.sleep(random.uniform(0.3, 0.8))
             inp.key(VK_RETURN)
             time.sleep(0.8)
@@ -277,6 +291,35 @@ class WeChatDetector:
         except Exception as e:
             log.error(f"发送失败 [{contact}]: {e}")
             return False
+
+    def _send_media(self, contact: str, path, kind: str) -> bool:
+        """发送图片/文件（表情包走 image 通道，GIF 同理）"""
+        if not self.connected or self.db is None:
+            return False
+        try:
+            from wechatauto.guia import quick_send_file, quick_send_image
+            p = Path(path)
+            if not p.is_file():
+                log.error(f"媒体文件不存在: {p}")
+                return False
+            username = self._resolve(contact)
+            fn = quick_send_image if kind == "image" else quick_send_file
+            result = fn(str(p), username, verify=True)
+            if not result:
+                log.error(f"媒体发送失败 [{contact}]: {result}")
+                return False
+            label = "图片/表情" if kind == "image" else "文件"
+            log.info(f"已发送{label} [{contact}]: {p.name}")
+            return True
+        except Exception as e:
+            log.error(f"媒体发送异常 [{contact}]: {e}")
+            return False
+
+    def send_image(self, contact: str, path) -> bool:
+        return self._send_media(contact, path, "image")
+
+    def send_file(self, contact: str, path) -> bool:
+        return self._send_media(contact, path, "file")
 
     def scan_contacts(self, contacts: list[str]) -> dict[str, list[Message]]:
         if not self.connected:

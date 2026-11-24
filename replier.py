@@ -8,6 +8,8 @@ from typing import Optional
 
 from openai import OpenAI
 
+import dispatcher
+
 log = logging.getLogger(__name__)
 
 DEFAULT_SYSTEM_PROMPT = (
@@ -40,6 +42,31 @@ class AIReplier:
             )
             log.info(f"AI模型 [{name}] 初始化成功")
 
+    def _media_prompt(self) -> str:
+        """注入媒体发送能力与当前素材清单，让 AI 知道能发什么、怎么发"""
+        try:
+            assets = dispatcher.list_assets()
+        except Exception as e:
+            log.warning(f"读取素材清单失败: {e}")
+            return ""
+        lines = [
+            "",
+            "【媒体回复能力】",
+            "除纯文字外，你可以在回复中嵌入以下标记发送素材，标记由系统自动执行：",
+            "- 发图片：[IMAGE:文件名]",
+            "- 发文件：[FILE:文件名]",
+            "- 发表情包：[STICKER:文件名]",
+            "文字中可以直接混用微信内置表情短代码，如 [呲牙][微笑][强]。",
+        ]
+        labels = {"image": "图片", "file": "文件", "sticker": "表情包"}
+        for kind, names in assets.items():
+            if names:
+                lines.append(f"当前可用{labels[kind]}素材：" + "、".join(names))
+            else:
+                lines.append(f"当前没有可用{labels[kind]}素材，禁止输出对应标记。")
+        lines.append("仅在确有需要时使用标记，名称必须从上方清单中选取，不要编造。")
+        return "\n".join(lines)
+
     def generate(self, message: str, contact: str = "default", model_name: str = None) -> Optional[str]:
         name = model_name or self.default_model
         client = self.clients.get(name)
@@ -50,7 +77,7 @@ class AIReplier:
         model_cfg = self.config.get("models", {}).get(name, {})
         model_id = model_cfg.get("model", "")
 
-        messages = [{"role": "system", "content": self.system_prompt}]
+        messages = [{"role": "system", "content": self.system_prompt + self._media_prompt()}]
 
         # 知识库 RAG：检索相关片段注入提示词
         if self.knowledge:
@@ -88,7 +115,7 @@ class AIReplier:
                 model=model_id,
                 messages=messages,
                 temperature=0.7,
-                max_tokens=300
+                max_tokens=500
             )
             reply = resp.choices[0].message.content
 
