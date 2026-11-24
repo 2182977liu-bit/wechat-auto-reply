@@ -746,6 +746,8 @@
                                 </button>
                             </div>
                             <datalist id="{{ name }}-model-list"></datalist>
+                            <select class="form-input" id="{{ name }}-model-select" style="display: none; margin-top: 8px;"
+                                    onchange="document.getElementById('{{ name }}-model').value = this.value"></select>
                         </div>
                         <button class="btn btn-primary btn-sm" style="width: 100%;" onclick="saveModel('{{ name }}')">
                             <i class="bi bi-save"></i> 保存配置
@@ -901,6 +903,8 @@
                     </button>
                 </div>
                 <datalist id="new-model-list"></datalist>
+                <select class="form-input" id="new-model-select" style="display: none; margin-top: 8px;"
+                        onchange="document.getElementById('new-model-id').value = this.value"></select>
             </div>
         </div>
         <div class="modal-footer">
@@ -1130,7 +1134,12 @@ async function fetchModels(scope) {
     });
     if (d._ok && d.models && d.models.length) {
         list.innerHTML = d.models.map(m => `<option value="${m}">`).join('');
-        showAlert(`拉取到 ${d.models.length} 个模型，点击模型输入框即可选择`, 'success');
+        // 同时显示一个可见下拉框，选中即填入输入框
+        const sel = document.getElementById(isNew ? 'new-model-select' : scope + '-model-select');
+        sel.innerHTML = '<option value="">— 选择模型 —</option>' +
+            d.models.map(m => `<option value="${m}">${m}</option>`).join('');
+        sel.style.display = 'block';
+        showAlert(`拉取到 ${d.models.length} 个模型，请在下拉框中选择`, 'success');
     } else {
         showAlert(d.error || '拉取失败，可手动输入模型名', 'error');
     }

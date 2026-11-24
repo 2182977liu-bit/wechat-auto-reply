@@ -4,6 +4,33 @@
 {% block content %}
 <div class="pixel-card mb-4">
     <div class="pixel-card-header">
+        <span><i class="bi bi-eye"></i> 监控列表</span>
+        <span class="pixel-badge pixel-badge-blue">{{ contacts|length }} 个</span>
+    </div>
+    <div class="pixel-card-body" style="padding: 0;">
+        {% if contacts %}
+            {% for c in contacts %}
+            <div class="pixel-list-item">
+                <div class="d-flex align-center gap-2">
+                    <i class="bi bi-person text-blue"></i>
+                    <span>{{ c }}</span>
+                </div>
+                <button class="pixel-btn pixel-btn-red pixel-btn-sm" onclick="delContact('{{ c }}')">
+                    <i class="bi bi-trash"></i> 删除
+                </button>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="text-center text-gray" style="padding: 24px 16px;">
+                <i class="bi bi-inbox" style="font-size: 28px; display: block; margin-bottom: 8px;"></i>
+                <p>暂无联系人，请从下方微信列表选择或手动添加</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="pixel-card mb-4">
+    <div class="pixel-card-header">
         <span><i class="bi bi-people"></i> 从微信添加</span>
         <button class="pixel-btn pixel-btn-blue pixel-btn-sm" onclick="loadWechatContacts()" id="load-btn">
             <i class="bi bi-arrow-clockwise"></i> 读取会话列表
@@ -23,7 +50,7 @@
             <button class="pixel-btn pixel-btn-sm" id="tab-person" onclick="renderWx('person')"><i class="bi bi-person"></i> 个人</button>
             <button class="pixel-btn pixel-btn-sm" id="tab-group" onclick="renderWx('group')"><i class="bi bi-people"></i> 群组</button>
         </div>
-        <div id="wx-result" class="text-gray text-sm" style="padding: 8px 4px;">
+        <div id="wx-result" class="text-gray text-sm" style="padding: 8px 4px; max-height: 320px; overflow-y: auto;">
             点击「读取会话列表」显示最近会话，或输入关键词搜索全部联系人。点选即可加入监控。
         </div>
     </div>
@@ -45,32 +72,6 @@
     </div>
 </div>
 
-<div class="pixel-card">
-    <div class="pixel-card-header">
-        <span><i class="bi bi-eye"></i> 监控列表</span>
-        <span class="pixel-badge pixel-badge-blue">{{ contacts|length }} 个</span>
-    </div>
-    <div class="pixel-card-body" style="padding: 0;">
-        {% if contacts %}
-            {% for c in contacts %}
-            <div class="pixel-list-item">
-                <div class="d-flex align-center gap-2">
-                    <i class="bi bi-person text-blue"></i>
-                    <span>{{ c }}</span>
-                </div>
-                <button class="pixel-btn pixel-btn-red pixel-btn-sm" onclick="delContact('{{ c }}')">
-                    <i class="bi bi-trash"></i> 删除
-                </button>
-            </div>
-            {% endfor %}
-        {% else %}
-            <div class="text-center text-gray" style="padding: 40px 16px;">
-                <i class="bi bi-inbox" style="font-size: 32px; display: block; margin-bottom: 12px;"></i>
-                <p>暂无联系人，请从上方微信列表选择或手动添加</p>
-            </div>
-        {% endif %}
-    </div>
-</div>
 {% endblock %}
 
 {% block extra_js %}

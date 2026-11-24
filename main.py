@@ -102,10 +102,14 @@ class WeChatBot:
         failures = 0
 
         log.info(f"开始监控 {len(contacts)} 个联系人（冷却{cooldown}s，每小时上限{hourly_cap}条）")
+        if not contacts:
+            log.warning("监控列表为空，请到「联系人」页添加；运行中新增会自动生效")
         self.detector.init_baseline(contacts)
 
         while self.running:
             try:
+                # 每轮重读联系人列表，运行中新增/删除即时生效
+                contacts = self.config.get("wechat", {}).get("contacts", [])
                 new_msgs = self.detector.scan_contacts(contacts)
                 for contact, msgs in new_msgs.items():
                     for msg in msgs:

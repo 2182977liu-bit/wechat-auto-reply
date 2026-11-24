@@ -189,7 +189,18 @@ class WeChatDetector:
     def get_new_messages(self, contact: str) -> list[Message]:
         if not self.connected or self.db is None:
             return []
-        seen = self._seen.setdefault(contact, {})
+        seen = self._seen.get(contact)
+        if seen is None:
+            # 首次见到该联系人（运行中新增）：先记基线，不回复历史消息
+            try:
+                username = self._resolve(contact)
+                msgs = self.db.get_messages(username, limit=FETCH_LIMIT) or []
+                self._seen[contact] = {_msg_key(m): m.get("create_time", 0) for m in msgs}
+                log.info(f"新联系人 [{contact}] 基线初始化：{len(msgs)} 条历史消息")
+            except Exception as e:
+                log.warning(f"新联系人 [{contact}] 基线初始化失败: {e}")
+                self._seen[contact] = {}
+            return []
         try:
             username = self._resolve(contact)
             msgs = self.db.get_messages(username, limit=FETCH_LIMIT) or []
