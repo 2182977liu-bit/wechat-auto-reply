@@ -221,7 +221,14 @@ class WeChatDetector:
             # 自己发的、非文本消息只记水位不回复
             if self._is_self(m):
                 continue
-            if m.get("type") != 1:
+            # wechatauto-replica 的 type 是中文枚举（文本/图片/语音...），
+            # 旧版 wxauto 是 int（文本=1），两种都要兼容，否则全部消息被静默跳过
+            mtype = m.get("type")
+            is_text = mtype == 1 or (
+                isinstance(mtype, str) and mtype.strip().lower() in ("1", "文本", "text")
+            )
+            if not is_text:
+                log.debug(f"[{contact}] 跳过非文本消息 type={mtype!r}")
                 continue
             content = (m.get("content") or "").strip()
             if not content:
