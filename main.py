@@ -10,12 +10,13 @@ import logging
 import threading
 from pathlib import Path
 
-from config import load_config
+from config import load_config, LOG_PATH
 from detector import WeChatDetector
 from replier import AIReplier
 from memory import ContactMemory
 
 # 日志配置
+LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
